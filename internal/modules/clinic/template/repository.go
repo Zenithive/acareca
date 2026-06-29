@@ -188,13 +188,14 @@ func (r *Repository) GetInvoiceSetting(ctx context.Context, clinicId, invoiceId 
 func (r *Repository) UpdateSetting(ctx context.Context, st *Setting, templateId uuid.UUID) error {
 	const q = `
 		INSERT INTO tbl_template_setting (
-			mapping_id, primary_color, accent_color, body_font_family, header_font_family,
+			id, mapping_id, primary_color, accent_color, body_font_family, header_font_family,
 			is_logo, logo_id, letterhead_id, footer_id, terms_text, is_watermark, watermark_text, is_tax, table_style
 		) VALUES (
-			:mapping_id, :primary_color, :accent_color, :body_font_family, :header_font_family,
+			:id, :mapping_id, :primary_color, :accent_color, :body_font_family, :header_font_family,
 			:is_logo, :logo_id, :letterhead_id, :footer_id, :terms_text, :is_watermark, :watermark_text, :is_tax, :table_style
 		)
 		ON CONFLICT (id) DO UPDATE SET
+			mapping_id         = EXCLUDED.mapping_id,
 			primary_color      = EXCLUDED.primary_color,
 			accent_color       = EXCLUDED.accent_color,
 			body_font_family   = EXCLUDED.body_font_family,
@@ -248,10 +249,10 @@ func (r *Repository) CreateSetting(ctx context.Context, st *Setting) error {
 	const q = `
 		INSERT INTO tbl_template_setting (
 			id, mapping_id, primary_color, accent_color, body_font_family, header_font_family,
-			is_logo, logo_id, letterhead_id, footer_id, terms_text, is_watermark, watermark_text, is_tax
+			is_logo, logo_id, letterhead_id, footer_id, terms_text, is_watermark, watermark_text, is_tax, table_style
 		) VALUES (
 			:id, :mapping_id, :primary_color, :accent_color, :body_font_family, :header_font_family,
-			:is_logo, :logo_id, :letterhead_id, :footer_id, :terms_text, :is_watermark, :watermark_text, :is_tax
+			:is_logo, :logo_id, :letterhead_id, :footer_id, :terms_text, :is_watermark, :watermark_text, :is_tax, :table_style
 		)
 		RETURNING created_at`
 

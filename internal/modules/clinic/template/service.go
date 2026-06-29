@@ -405,12 +405,7 @@ func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateI
 		return nil, "", fmt.Errorf("failed to fetch invoice sections: %w", err)
 	}
 
-	st, err := s.repo.GetInvoiceSetting(
-		ctx,
-		clinicId,
-		invoiceId,
-		templateIds,
-	)
+	st, err := s.repo.GetInvoiceSetting(ctx, clinicId, invoiceId, templateIds)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to fetch invoice settings: %w", err)
 	}
@@ -424,12 +419,7 @@ func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateI
 	// Build Invoice Data Structures
 	data := InvoiceToData(inv)
 
-	ApplyPDFCollections(
-		&data,
-		inv.Items,
-		sections,
-		inv.InvoiceNumber,
-	)
+	ApplyPDFCollections(&data, inv.Items, sections, inv.InvoiceNumber)
 
 	if data.PaymentDateDisplay == "" {
 		data.PaymentDateDisplay = data.IssueDateDisplay
@@ -463,35 +453,17 @@ func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateI
 
 		t, err := s.repo.Get(ctx, id)
 		if err != nil {
-			return nil, "", fmt.Errorf(
-				"failed fetching template %s: %w",
-				id,
-				err,
-			)
+			return nil, "", fmt.Errorf("failed fetching template %s: %w", id, err)
 		}
 
-		html, err := crypto.DecryptAndDecompress(
-			t.Html,
-			s.encryptionKey,
-		)
+		html, err := crypto.DecryptAndDecompress(t.Html, s.encryptionKey)
 		if err != nil {
-			return nil, "", fmt.Errorf(
-				"failed decrypting html for template %s: %w",
-				t.Name,
-				err,
-			)
+			return nil, "", fmt.Errorf("failed decrypting html for template %s: %w", t.Name, err)
 		}
 
-		css, err := crypto.DecryptAndDecompress(
-			t.Css,
-			s.encryptionKey,
-		)
+		css, err := crypto.DecryptAndDecompress(t.Css, s.encryptionKey)
 		if err != nil {
-			return nil, "", fmt.Errorf(
-				"failed decrypting css for template %s: %w",
-				t.Name,
-				err,
-			)
+			return nil, "", fmt.Errorf("failed decrypting css for template %s: %w", t.Name, err)
 		}
 
 		order, ok := pageOrder[t.Name]
@@ -499,14 +471,11 @@ func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateI
 			continue
 		}
 
-		assets = append(
-			assets,
-			templateAsset{
-				Order: order,
-				HTML:  html,
-				CSS:   css,
-			},
-		)
+		assets = append(assets, templateAsset{
+			Order: order,
+			HTML:  html,
+			CSS:   css,
+		})
 	}
 
 	if len(assets) == 0 {
@@ -531,6 +500,18 @@ func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateI
 			case 3:
 				dataMap["invoice_number"] = ts["remittance_invoice_number"]
 			}
+
+			// --- FIX: Translate style layout into explicit template-safe boolean flags ---
+			if styleStr, exists := ts["table_style"].(string); exists {
+				dataMap["table_style_bordered"] = (styleStr == "bordered")
+				dataMap["table_style_striped"] = (styleStr == "striped")
+			}
+		}
+
+		// Direct struct property fallback verification
+		if dataMap["table_style_bordered"] == nil && data.TableStyleClass != "" {
+			dataMap["table_style_bordered"] = (data.TableStyleClass == "bordered")
+			dataMap["table_style_striped"] = (data.TableStyleClass == "striped")
 		}
 
 		renderedHTML, err := raymond.Render(a.HTML, dataMap)
@@ -568,30 +549,28 @@ func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateI
 
 	pdf, err := chromepdf.Generate(ctx, document)
 	if err != nil {
-		return nil, "", fmt.Errorf(
-			"failed generating pdf: %w",
-			err,
-		)
+		return nil, "", fmt.Errorf("failed generating pdf: %w", err)
 	}
 
-	return pdf,
-		fmt.Sprintf("INVOICE_%s", data.InvoiceNumber),
-		nil
+	return pdf, fmt.Sprintf("INVOICE_%s", data.InvoiceNumber), nil
 }
 
 func (s *Service) applyInvoiceSettings(data *InvoiceData, st *Setting) {
 
 	if st == nil {
 		data.TemplateSettings = map[string]interface{}{
-			"primary_color":      "#1f4e5f",
-			"accent_color":       "#1f4e5f",
-			"body_font_family":   "Arial",
-			"header_font_family": "Arial",
-			"is_logo":            false,
-			"is_watermark":       false,
-			"watermark_text":     "PAID",
-			"is_tax":             true,
-			"terms_text":         "",
+			"primary_color":          "#1f4e5f",
+			"accent_color":           "#1f4e5f",
+			"body_font_family":       "Arial",
+			"body_font_family_css":   "Arial",
+			"header_font_family":     "Arial",
+			"header_font_family_css": "Arial",
+			"is_logo":                false,
+			"is_watermark":           false,
+			"watermark_text":         "PAID",
+			"is_tax":                 true,
+			"terms_text":             "",
+			"table_style":            "simple",
 		}
 		return
 	}
@@ -618,17 +597,8 @@ func (s *Service) applyInvoiceSettings(data *InvoiceData, st *Setting) {
 
 	if st.IsLogo {
 		data.ShowLogo = true
-
-		if st.Logo != nil &&
-			st.Logo.ToRsDocument().FileKey != "" {
-
-			data.LogoURL =
-				strings.TrimRight(
-					s.cfg.R2StoragePrefix,
-					"/",
-				) +
-					"/" +
-					st.Logo.ToRsDocument().FileKey
+		if st.Logo != nil && st.Logo.ToRsDocument().FileKey != "" {
+			data.LogoURL = strings.TrimRight(s.cfg.R2StoragePrefix, "/") + "/" + st.Logo.ToRsDocument().FileKey
 		}
 	}
 
@@ -646,15 +616,28 @@ func (s *Service) applyInvoiceSettings(data *InvoiceData, st *Setting) {
 		data.TemplateSettings = map[string]interface{}{}
 	}
 
+	bodyFontImport := st.BodyFontFamily
+	bodyFontCSS := strings.ReplaceAll(st.BodyFontFamily, "+", " ")
+	headerFontImport := st.HeaderFontFamily
+	headerFontCSS := strings.ReplaceAll(st.HeaderFontFamily, "+", " ")
+
 	data.TemplateSettings["primary_color"] = st.PrimaryColor
 	data.TemplateSettings["accent_color"] = st.AccentColor
-	data.TemplateSettings["body_font_family"] = st.BodyFontFamily
-	data.TemplateSettings["header_font_family"] = st.HeaderFontFamily
+	data.TemplateSettings["body_font_family"] = bodyFontImport
+	data.TemplateSettings["body_font_family_css"] = bodyFontCSS
+	data.TemplateSettings["header_font_family"] = headerFontImport
+	data.TemplateSettings["header_font_family_css"] = headerFontCSS
 	data.TemplateSettings["is_logo"] = st.IsLogo
 	data.TemplateSettings["is_watermark"] = st.IsWaterMark
 	data.TemplateSettings["watermark_text"] = watermark
 	data.TemplateSettings["is_tax"] = st.IsTax
 	data.TemplateSettings["terms_text"] = terms
+
+	if st.TableStyle != nil {
+		data.TemplateSettings["table_style"] = *st.TableStyle
+	} else {
+		data.TemplateSettings["table_style"] = "simple"
+	}
 }
 
 func (s *Service) BulkUpdateDefaults(ctx context.Context) error {

@@ -398,9 +398,8 @@ func (s *Service) syncTemplateSettings(ctx context.Context, invoiceID uuid.UUID,
 		if err := s.tplRepo.CreateMapping(ctx, &m); err != nil {
 			return fmt.Errorf("failed linking relational structural mapping context: %w", err)
 		}
-
 	} else {
-		if err := s.tplRepo.UpdateSetting(ctx, &dbSetting, templateID); err != nil {
+		if err := s.tplRepo.UpdateSetting(ctx, &dbSetting, targetSettingID); err != nil {
 			return fmt.Errorf("failed overwriting specific layout configuration settings profile: %w", err)
 		}
 	}

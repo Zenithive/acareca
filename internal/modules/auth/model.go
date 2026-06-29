@@ -165,16 +165,22 @@ func (u *User) ToRsUser() *RsUser {
 		}
 	}
 	return &RsUser{
-		ID:        u.ID,
-		Email:     u.Email,
-		FirstName: u.FirstName,
-		LastName:  u.LastName,
-		Phone:     u.Phone,
-		Role:      u.Role,
-		Document:  doc,
-		CreatedAt: u.CreatedAt,
-		UpdatedAt: u.UpdatedAt,
-		ABN:       u.ABN,
+		ID:             u.ID,
+		Email:          u.Email,
+		FirstName:      u.FirstName,
+		LastName:       u.LastName,
+		Phone:          u.Phone,
+		Role:           u.Role,
+		Document:       doc,
+		CreatedAt:      u.CreatedAt,
+		UpdatedAt:      u.UpdatedAt,
+		ABN:            u.ABN,
+		EntityType:     u.EntityType,
+		EntityName:     u.EntityName,
+		ACN:            u.ACN,
+		Address:        u.Address,
+		Profession:     u.Profession,
+		TaxAgentNumber: u.TaxAgentNumber,
 	}
 }
 

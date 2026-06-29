@@ -231,7 +231,28 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 		AfterState: sanitizeUser(created),
 	})
 
-	return created.ToRsUser(), nil
+	resUser := created.ToRsUser()
+
+	switch created.Role {
+	case util.RolePractitioner:
+		resUser.EntityType = req.EntityType
+		resUser.EntityName = req.EntityName
+		resUser.ABN = req.ABN
+		resUser.ACN = req.ACN
+		resUser.Address = req.Address
+		resUser.Profession = req.Profession
+
+	case util.RoleAccountant:
+		resUser.EntityType = req.EntityType
+		resUser.EntityName = req.EntityName
+		resUser.ABN = req.ABN
+		resUser.ACN = req.ACN
+		resUser.Address = req.Address
+		resUser.Profession = req.Profession
+		resUser.TaxAgentNumber = req.TaxAgentNumber
+	}
+
+	return resUser, nil
 }
 
 func (s *service) Login(ctx context.Context, req *RqLogin) (*RsToken, error) {
