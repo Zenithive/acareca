@@ -275,6 +275,11 @@ func invoiceDataToMap(data InvoiceData) (map[string]interface{}, error) {
 	dataMap["remittance_items"] = orEmptySlice(data.RemittanceItems)
 	dataMap["service_description_items"] = data.ServiceDescriptionItems
 
+	// Inject calculation fields so summary total labels parse perfectly
+	dataMap["subtotal"] = data.Subtotal
+	dataMap["tax_total"] = data.TaxTotal
+	dataMap["grand_total"] = data.GrandTotal
+
 	dataMap["service_fee_rate_intro"] = map[string]interface{}{
 		"label":            "Services rendered to you for the period, including:",
 		"fee_rate_display": data.CustomFeeRateDisplay,
