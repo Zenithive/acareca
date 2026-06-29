@@ -73,8 +73,6 @@ func sharedCSS() string {
 :root { 
   --primary-color: {{#if template_settings.primary_color}}{{template_settings.primary_color}}{{else}}#1f4e5f{{/if}}; 
   --accent-color: {{#if template_settings.accent_color}}{{template_settings.accent_color}}{{else}}#1f4e5f{{/if}};
-  --bg-input-blue: #e8f1f5; 
-  --bg-darker-blue: #d4e5ee;
   --text-dark: #000000;
   --pos-green: #007a3d;
 }
@@ -232,7 +230,7 @@ body {
 }
 
 .bg-sky-row td {
-  background-color: var(--bg-input-blue) !important;
+  background-color: rgb(from var(--accent-color) r g b / 0.14) !important;
   padding-top: 1px !important;
   padding-bottom: 1px !important;
   margin-bottom: 2px !important;
@@ -250,7 +248,7 @@ body {
 
 .row-final-balance td {
   font-weight: bold;
-  background-color: var(--bg-darker-blue) !important;
+  background-color: rgb(from var(--accent-color) r g b / 0.20) !important;
   border-top: 2.5px solid var(--primary-color) !important;
   border-bottom: 2.5px solid var(--primary-color) !important;
 }
@@ -477,7 +475,7 @@ func DefaultTemplates() []RqGlobalTemplate {
             <td style="padding: 3px 6px; text-align: left;">GST (10%%)</td>
             <td class="num" style="padding: 3px 6px;">{{format_currency tax_total}}</td>
           </tr>
-          <tr style="font-weight: bold; background-color: var(--bg-input-blue);">
+          <tr style="font-weight: bold; background-color: rgb(from var(--accent-color) r g b / 0.45) !important;">
             <td style="padding: 5px 6px; border-top: 1px solid #000000; border-bottom: 2px solid #000000; text-align: left;">TOTAL (incl. GST)</td>
             <td class="num" style="padding: 5px 6px; border-top: 1px solid #000000; border-bottom: 2px solid #000000;">{{format_currency grand_total}}</td>
           </tr>

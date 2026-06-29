@@ -141,6 +141,8 @@ func ApplyPDFCollections(data *InvoiceData, items []InvoiceItem, sections []Invo
 		}
 	}
 
+	sfaItemIndex := 0
+
 	// PASS 2: Map fields cleanly by section type and sort order with zero hardcoding
 	for _, item := range items {
 		// Skip calculation layouts from line-item listing structures
@@ -213,17 +215,18 @@ func ApplyPDFCollections(data *InvoiceData, items []InvoiceItem, sections []Invo
 			data.PatientFeeItems = append(data.PatientFeeItems, row)
 
 		case "SFA_INVOICE", "TAX_INVOICE":
-			// Structurally identify subtotal variables without hardcoding the BAS code strings
+			data.ServiceFeeItems = append(data.ServiceFeeItems, row)
+
 			if item.IsFinal {
 				data.GrandTotal = item.Amount
-			} else if hasFormula {
-				if isNegative || isDebit {
-					data.TaxTotal = item.Amount
-				} else {
-					data.Subtotal = item.Amount
+			} else {
+				if sfaItemIndex == 0 {
+					data.Subtotal = item.Amount 
+				} else if sfaItemIndex == 1 {
+					data.TaxTotal = item.Amount 
 				}
+				sfaItemIndex++
 			}
-			data.ServiceFeeItems = append(data.ServiceFeeItems, row)
 
 		case "REMITTANCE_INVOICE", "REMITTANCE_ADVICE":
 			data.RemittanceItems = append(data.RemittanceItems, row)
@@ -274,11 +277,6 @@ func invoiceDataToMap(data InvoiceData) (map[string]interface{}, error) {
 	dataMap["settlement_items"] = orEmptySlice(data.SettlementItems)
 	dataMap["remittance_items"] = orEmptySlice(data.RemittanceItems)
 	dataMap["service_description_items"] = data.ServiceDescriptionItems
-
-	// Inject calculation fields so summary total labels parse perfectly
-	dataMap["subtotal"] = data.Subtotal
-	dataMap["tax_total"] = data.TaxTotal
-	dataMap["grand_total"] = data.GrandTotal
 
 	dataMap["service_fee_rate_intro"] = map[string]interface{}{
 		"label":            "Services rendered to you for the period, including:",
