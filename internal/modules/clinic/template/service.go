@@ -583,15 +583,18 @@ func (s *Service) applyInvoiceSettings(data *InvoiceData, st *Setting) {
 
 	if st == nil {
 		data.TemplateSettings = map[string]interface{}{
-			"primary_color":      "#1f4e5f",
-			"accent_color":       "#1f4e5f",
-			"body_font_family":   "Arial",
-			"header_font_family": "Arial",
-			"is_logo":            false,
-			"is_watermark":       false,
-			"watermark_text":     "PAID",
-			"is_tax":             true,
-			"terms_text":         "",
+			"primary_color":          "#1f4e5f",
+			"accent_color":           "#1f4e5f",
+			"body_font_family":       "Arial",
+			"body_font_family_css":   "Arial",
+			"header_font_family":     "Arial",
+			"header_font_family_css": "Arial",
+			"is_logo":                false,
+			"is_watermark":           false,
+			"watermark_text":         "PAID",
+			"is_tax":                 true,
+			"terms_text":             "",
+			"table_style":            "simple",
 		}
 		return
 	}
@@ -646,15 +649,28 @@ func (s *Service) applyInvoiceSettings(data *InvoiceData, st *Setting) {
 		data.TemplateSettings = map[string]interface{}{}
 	}
 
+	bodyFontImport := st.BodyFontFamily
+	bodyFontCSS := strings.ReplaceAll(st.BodyFontFamily, "+", " ")
+	headerFontImport := st.HeaderFontFamily
+	headerFontCSS := strings.ReplaceAll(st.HeaderFontFamily, "+", " ")
+
 	data.TemplateSettings["primary_color"] = st.PrimaryColor
 	data.TemplateSettings["accent_color"] = st.AccentColor
-	data.TemplateSettings["body_font_family"] = st.BodyFontFamily
-	data.TemplateSettings["header_font_family"] = st.HeaderFontFamily
+	data.TemplateSettings["body_font_family"] = bodyFontImport
+	data.TemplateSettings["body_font_family_css"] = bodyFontCSS
+	data.TemplateSettings["header_font_family"] = headerFontImport
+	data.TemplateSettings["header_font_family_css"] = headerFontCSS
 	data.TemplateSettings["is_logo"] = st.IsLogo
 	data.TemplateSettings["is_watermark"] = st.IsWaterMark
 	data.TemplateSettings["watermark_text"] = watermark
 	data.TemplateSettings["is_tax"] = st.IsTax
 	data.TemplateSettings["terms_text"] = terms
+
+	if st.TableStyle != nil {
+		data.TemplateSettings["table_style"] = *st.TableStyle
+	} else {
+		data.TemplateSettings["table_style"] = "simple"
+	}
 }
 
 func (s *Service) BulkUpdateDefaults(ctx context.Context) error {

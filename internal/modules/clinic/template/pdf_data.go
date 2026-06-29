@@ -141,6 +141,8 @@ func ApplyPDFCollections(data *InvoiceData, items []InvoiceItem, sections []Invo
 		}
 	}
 
+	sfaItemIndex := 0
+
 	// PASS 2: Map fields cleanly by section type and sort order with zero hardcoding
 	for _, item := range items {
 		// Skip calculation layouts from line-item listing structures
@@ -213,17 +215,18 @@ func ApplyPDFCollections(data *InvoiceData, items []InvoiceItem, sections []Invo
 			data.PatientFeeItems = append(data.PatientFeeItems, row)
 
 		case "SFA_INVOICE", "TAX_INVOICE":
-			// Structurally identify subtotal variables without hardcoding the BAS code strings
+			data.ServiceFeeItems = append(data.ServiceFeeItems, row)
+
 			if item.IsFinal {
 				data.GrandTotal = item.Amount
-			} else if hasFormula {
-				if isNegative || isDebit {
-					data.TaxTotal = item.Amount
-				} else {
-					data.Subtotal = item.Amount
+			} else {
+				if sfaItemIndex == 0 {
+					data.Subtotal = item.Amount 
+				} else if sfaItemIndex == 1 {
+					data.TaxTotal = item.Amount 
 				}
+				sfaItemIndex++
 			}
-			data.ServiceFeeItems = append(data.ServiceFeeItems, row)
 
 		case "REMITTANCE_INVOICE", "REMITTANCE_ADVICE":
 			data.RemittanceItems = append(data.RemittanceItems, row)
