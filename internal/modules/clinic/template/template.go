@@ -292,12 +292,12 @@ body {
 }
 
 body .payment-details-table-bordered {
-  border: 1px solid var(--accent-color) !important; 
+  border: 1px solid var(--primary-color) !important; 
   border-collapse: collapse !important;
 }
 
 body .payment-details-table-bordered td {
-  border: 1px solid var(--accent-color) !important; 
+  border: 1px solid var(--primary-color) !important; 
 }
 
 body .payment-details-table-striped tr:nth-child(even) {
@@ -383,15 +383,17 @@ func DefaultTemplates() []RqGlobalTemplate {
   <table class="data-table">
     <thead>
       <tr>
-        <th style="width: 85%%; text-align: left;">3. NET SETTLEMENT</th>
-        <th style="width: 15%%; text-align: right;">Amount</th>
+        <th style="width: 65%%; text-align: left;">3. NET SETTLEMENT</th>
+        <th style="width: 20%%; text-align: right;">Amount</th>
+        <th style="width: 15%%; text-align: center;">BAS Code</th>
       </tr>
     </thead>
     <tbody>
       {{#each settlement_items}}
       <tr{{#if row_class}} class="{{row_class}}"{{/if}}>
-        <td>{{label}}</td>
-        <td class="num{{#if value_class}} {{value_class}}{{/if}}"{{#if is_bold}} style="font-weight: bold;"{{/if}}">{{#if is_negative}}({{format_currency amount}}){{else}}{{format_currency amount}}{{/if}}</td>
+        <td style="width: 65%%;">{{label}}</td>
+        <td class="num{{#if value_class}} {{value_class}}{{/if}}" style="width: 20%%;{{#if is_bold}} font-weight: bold;{{/if}}">{{#if is_negative}}({{format_currency amount}}){{else}}{{format_currency amount}}{{/if}}</td>
+        <td class="center" style="width: 15%%;">{{bas_code}}</td>
       </tr>
       {{/each}}
     </tbody>
@@ -483,16 +485,18 @@ func DefaultTemplates() []RqGlobalTemplate {
     </tr>
   </table>
 
-  {{#if terms_text}}
+ {{#if payment_terms}}
   <div class="footer-notes-box" style="margin-top: 24px;">
-    <p><strong>Payment terms:</strong> {{terms_text}}</p>
+    <p><strong>Payment terms:</strong> {{payment_terms}}</p>
+  </div>
+  {{else if template_settings.payment_terms}}
+  <div class="footer-notes-box" style="margin-top: 24px;">
+    <p><strong>Payment terms:</strong> {{template_settings.payment_terms}}</p>
   </div>
   {{else}}
-    {{#if template_settings.terms_text}}
-    <div class="footer-notes-box" style="margin-top: 24px;">
-      <p><strong>Payment terms:</strong> {{template_settings.terms_text}}</p>
-    </div>
-    {{/if}}
+  <div class="footer-notes-box" style="margin-top: 24px;">
+    <p style="font-style: italic; margin-bottom: 4px;"><strong>Payment terms:</strong> This invoice is settled by offset against patient fees collected on your behalf. No payment is required—refer to the attached Remittance Advice for the net amount payable to you.</p>
+  </div>
   {{/if}}
 </div>`, defaultTemplateHeader("TAX INVOICE", "Invoice No.", taxInvoiceBillTo)),
 			Css: sharedCSS(),
@@ -506,15 +510,17 @@ func DefaultTemplates() []RqGlobalTemplate {
   <table class="data-table">
     <thead>
       <tr>
-        <th style="width: 80%%; text-align: left;">NET AMOUNT PAYABLE TO YOU</th>
+        <th style="width: 65%%; text-align: left;">NET AMOUNT PAYABLE TO YOU</th>
         <th style="width: 20%%; text-align: right;">Amount</th>
+        <th style="width: 15%%; text-align: center;">BAS Code</th>
       </tr>
     </thead>
     <tbody>
       {{#each remittance_items}}
       <tr{{#if row_class}} class="{{row_class}}"{{/if}}>
-        <td>{{label}}</td>
-        <td class="num{{#if value_class}} {{value_class}}{{/if}}">{{#if is_negative}}({{format_currency amount}}){{else}}{{format_currency amount}}{{/if}}</td>
+        <td style="width: 65%%;">{{label}}</td>
+        <td class="num{{#if value_class}} {{value_class}}{{/if}}" style="width: 20%%;">{{#if is_negative}}({{format_currency amount}}){{else}}{{format_currency amount}}{{/if}}</td>
+        <td class="center" style="width: 15%%;">{{bas_code}}</td>
       </tr>
       {{/each}}
     </tbody>
@@ -548,8 +554,8 @@ func DefaultTemplates() []RqGlobalTemplate {
     </table>
   </div>
 
-  <p style="margin-top: 30px; font-size: 11px; color: #4b5563; text-align: center; line-height: 1.5;">
-    This remittance advice is issued monthly together with the Calculation Statement (page 1) and Tax Invoice (page 2).<br>Please retain for your records and provide to your accountant at year end.
+  <p style="margin-top: 30px; font-size: 11px; color: #4b5563; text-align: center; line-height: 1.5; text-transform: lowercase;">
+    <span style="text-transform: none;">This remittance advice is issued</span> {{invoice_frequency}} <span style="text-transform: none;">together with the Calculation Statement (page 1) and Tax Invoice (page 2).<br>Please retain for your records and provide to your accountant at year end.</span>
   </p>
 </div>`, defaultTemplateHeader("REMITTANCE ADVICE", "Reference", remittancePayee)),
 			Css: sharedCSS(),
@@ -559,6 +565,7 @@ func DefaultTemplates() []RqGlobalTemplate {
 
 func DefaultSettings(templateId uuid.UUID) Setting {
 	termText := "This invoice is settled by offset against patient fees collected on your behalf. No payment is required—refer to the attached Remittance Advice for the net amount payable to you."
+	paymentTerms := "This invoice is settled by offset against patient fees collected on your behalf. No payment is required—refer to the attached Remittance Advice for the net amount payable to you."
 	waterMarkText := "PAID"
 	tableStyle := "simple"
 
@@ -566,7 +573,7 @@ func DefaultSettings(templateId uuid.UUID) Setting {
 		TemplateId:       templateId,
 		MappingId:        nil,
 		PrimaryColor:     "#1f4e5f",
-		AccentColor:      "#1f4e5f",
+		AccentColor:      "#5f96b4",
 		BodyFontFamily:   "Arial",
 		HeaderFontFamily: "Arial",
 		IsLogo:           true,
@@ -574,6 +581,7 @@ func DefaultSettings(templateId uuid.UUID) Setting {
 		LetterHeadId:     nil,
 		FooterId:         nil,
 		TermText:         &termText,
+		PaymentTerms:     &paymentTerms,
 		IsWaterMark:      false,
 		WaterMarkText:    &waterMarkText,
 		IsTax:            true,
