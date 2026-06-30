@@ -497,15 +497,15 @@ func DefaultTemplates() []RqGlobalTemplate {
 
  {{#if payment_terms}}
   <div class="footer-notes-box" style="margin-top: 24px;">
-    <p><strong>Payment terms:</strong> {{payment_terms}}</p>
+    <p style="font-style: italic;>Payment terms:{{payment_terms}}</p>
   </div>
   {{else if template_settings.payment_terms}}
   <div class="footer-notes-box" style="margin-top: 24px;">
-    <p><strong>Payment terms:</strong> {{template_settings.payment_terms}}</p>
+    <p style="font-style: italic;>Payment terms: {{template_settings.payment_terms}}</p>
   </div>
   {{else}}
   <div class="footer-notes-box" style="margin-top: 24px;">
-    <p style="font-style: italic; margin-bottom: 4px;"><strong>Payment terms:</strong> This invoice is settled by offset against patient fees collected on your behalf. No payment is required—refer to the attached Remittance Advice for the net amount payable to you.</p>
+    <p style="font-style: italic; margin-bottom: 4px;">Payment terms: This invoice is settled by offset against patient fees collected on your behalf. No payment is required—refer to the attached Remittance Advice for the net amount payable to you.</p>
   </div>
   {{/if}}
 </div>`, defaultTemplateHeader("TAX INVOICE", "Invoice No.", taxInvoiceBillTo)),
@@ -564,9 +564,9 @@ func DefaultTemplates() []RqGlobalTemplate {
     </table>
   </div>
 
-  <p style="margin-top: 30px; font-size: 11px; color: #4b5563; text-align: center; line-height: 1.5; text-transform: lowercase;">
-    <span style="text-transform: none;">This remittance advice is issued</span> {{invoice_frequency}} <span style="text-transform: none;">together with the Calculation Statement (page 1) and Tax Invoice (page 2).<br>Please retain for your records and provide to your accountant at year end.</span>
-  </p>
+    <div class="footer-notes-box">
+  <p style="text-transform: lowercase; font-style: italic;"><span style="text-transform: none; font-style: italic;">This remittance advice is issued</span> {{invoice_frequency}} <span style="text-transform: none; font-style: italic;">together with the Calculation Statement (page 1) and Tax Invoice (page 2).Please retain for your records and provide to your accountant at year end.</span></p>
+  </div>
 </div>`, defaultTemplateHeader("REMITTANCE ADVICE", "Reference", remittancePayee)),
 			Css: sharedCSS(),
 		},
