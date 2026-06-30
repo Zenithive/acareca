@@ -246,7 +246,14 @@ body {
 .amt-neg { color: var(--neg-red) !important; }
 
 .row-bold td { font-weight: bold; }
-.row-total td { font-weight: bold; border-top: 1px solid #000000; border-bottom: 1px solid #000000; }
+.row-total td { 
+  font-weight: bold; 
+  border-top: 1px solid var(--primary-color) !important; 
+  border-bottom: 1px solid var(--primary-color) !important; 
+  background-color: rgb(from var(--accent-color) r g b / 0.14) !important;
+  padding-top: 1px !important;
+  padding-bottom: 1px !important;
+}
 
 .row-final-balance td {
   font-weight: bold;
@@ -480,8 +487,8 @@ func DefaultTemplates() []RqGlobalTemplate {
             <td class="num" style="padding: 3px 6px;">{{format_currency tax_total}}</td>
           </tr>
           <tr style="font-weight: bold; background-color: rgb(from var(--accent-color) r g b / 0.45) !important;">
-            <td style="padding: 5px 6px; border-top: 1px solid #000000; border-bottom: 2px solid #000000; text-align: left;">TOTAL (incl. GST)</td>
-            <td class="num" style="padding: 5px 6px; border-top: 1px solid #000000; border-bottom: 2px solid #000000;">{{format_currency grand_total}}</td>
+            <td style="padding: 5px 6px; border-top: 1px solid var(--primary-color) !important; border-bottom: 2px solid var(--primary-color) !important; text-align: left;">TOTAL (incl. GST)</td>
+            <td class="num" style="padding: 5px 6px; border-top: 1px solid var(--primary-color) !important; border-bottom: 2px solid var(--primary-color) !important;">{{format_currency grand_total}}</td>
           </tr>
         </table>
       </td>
