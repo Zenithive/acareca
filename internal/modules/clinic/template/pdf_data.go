@@ -153,7 +153,11 @@ func ApplyPDFCollections(data *InvoiceData, items []InvoiceItem, sections []Invo
 			}
 		}
 
-		trimEntry := strings.TrimSpace(item.EntryType)
+		entryTypeUpper := ""
+		if item.EntryType != "" {
+			entryTypeUpper = strings.ToUpper(strings.TrimSpace(item.EntryType))
+		}
+
 		trimBas := ""
 		if item.BASCode != nil {
 			trimBas = strings.TrimSpace(*item.BASCode)
@@ -162,7 +166,7 @@ func ApplyPDFCollections(data *InvoiceData, items []InvoiceItem, sections []Invo
 		// Route directly from the field present on the InvoiceItem struct
 		secType := strings.ToUpper(strings.TrimSpace(item.SectionType))
 
-		isDebit := strings.EqualFold(trimEntry, "DEBIT")
+		isDebit := entryTypeUpper == "DEBIT"
 		isNegative := isDebit || item.Amount < 0
 
 		rowClass := ""
@@ -176,7 +180,7 @@ func ApplyPDFCollections(data *InvoiceData, items []InvoiceItem, sections []Invo
 			rowClass = "bg-sky-row"
 		}
 
-		if !item.IsFinal && !hasFormula && (isDebit || strings.EqualFold(trimEntry, "CREDIT")) {
+		if !item.IsFinal && !hasFormula && (isDebit || entryTypeUpper == "CREDIT") {
 			valueClass = "txt-blue-val"
 		}
 
@@ -192,7 +196,11 @@ func ApplyPDFCollections(data *InvoiceData, items []InvoiceItem, sections []Invo
 
 		if strings.Contains(lowerName, "net balance") {
 			displayLabel = "Net balance [ Total Income - Total Expenses ]"
-			valueClass = "amt-pos"
+			if item.Amount > 0 {
+				valueClass = "amt-pos"
+			} else if item.Amount < 0 {
+				valueClass = "amt-neg"
+			}
 		}
 
 		if item.FieldKey != nil && *item.FieldKey != "" {

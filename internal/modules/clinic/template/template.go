@@ -72,9 +72,10 @@ func sharedCSS() string {
 
 :root { 
   --primary-color: {{#if template_settings.primary_color}}{{template_settings.primary_color}}{{else}}#1f4e5f{{/if}}; 
-  --accent-color: {{#if template_settings.accent_color}}{{template_settings.accent_color}}{{else}}#1f4e5f{{/if}};
+  --accent-color: {{#if template_settings.accent_color}}{{template_settings.accent_color}}{{else}}#5f96b4{{/if}};
   --text-dark: #000000;
   --pos-green: #007a3d;
+  --neg-red: #c50505;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -242,6 +243,8 @@ body {
 
 .amt-pos { color: var(--pos-green) !important; }
 
+.amt-neg { color: var(--neg-red) !important; }
+
 .row-bold td { font-weight: bold; }
 .row-total td { font-weight: bold; border-top: 1px solid #000000; border-bottom: 1px solid #000000; }
 
@@ -330,7 +333,7 @@ func DefaultTemplates() []RqGlobalTemplate {
       {{#each patient_fee_items}}
       <tr{{#if row_class}} class="{{row_class}}"{{/if}}>
         <td>{{label}}</td>
-        <td class="num{{#if value_class}} {{value_class}}{{/if}}">{{format_currency amount}}</td>
+        <td class="num{{#if value_class}} {{value_class}}{{/if}}">{{format_table_amount this}}</td>
         <td class="center">{{bas_code}}</td>
       </tr>
       {{/each}}
