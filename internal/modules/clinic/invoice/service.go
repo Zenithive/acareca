@@ -151,11 +151,6 @@ func (s *Service) Update(ctx context.Context, invoice *RqUpdateInvoice) error {
 		return err
 	}
 
-	var wasPaid bool
-	if existing.Status != nil {
-		wasPaid = (*existing.Status == "paid")
-	}
-
 	updatedInvoice := invoice.ApplyToInvoice(existing)
 
 	sections := make([]section.Section, 0)
@@ -183,51 +178,6 @@ func (s *Service) Update(ctx context.Context, invoice *RqUpdateInvoice) error {
 					log.Printf("[SETTINGS-WARN] Failed syncing updated layout template adjustments: %v", err)
 				}
 			}
-		}
-	}
-
-	// Fetch fully loaded data row from db to get client fields securely
-	hydrated, err := s.repo.GetByID(ctx, s.db, *invoice.ID)
-	if err != nil {
-		return err
-	}
-
-	// AUTOMATED TRIGGER: Fires when state flips to paid
-	if hydrated.Status != nil && *hydrated.Status == "paid" && !wasPaid {
-		if hydrated.ContactTo != nil && hydrated.ContactTo.Email != "" {
-
-			rsInvoice := hydrated.ToRsInvoice()
-
-			pdfBase64, err := s.compileInvoicePDF(ctx, rsInvoice)
-			if err != nil {
-				log.Printf("[PDF-WARN] Skipping attachment compilation error trace: %v", err)
-			}
-
-			name := rsInvoice.ContactTo.Fname + " " + rsInvoice.ContactTo.Lname
-			dbSubject, dbBody, _ := s.repo.GetSavedClinicMailTemplate(ctx, rsInvoice.ClinicID)
-			chosenSubject, chosenBody, _ := mail.GetTemplateContext(dbSubject, dbBody)
-			var documentNumber string
-			for _, sec := range rsInvoice.Sections {
-				if strings.ToUpper(strings.TrimSpace(string(sec.SectionType))) == "CALCULATION_STATEMENT" && sec.DocumentNumber != "" {
-					documentNumber = sec.DocumentNumber
-					break
-				}
-			}
-			// Fallback if Calculation Statement is unpopulated
-			if documentNumber == "" {
-				if len(rsInvoice.Sections) > 0 && rsInvoice.Sections[0].DocumentNumber != "" {
-					documentNumber = rsInvoice.Sections[0].DocumentNumber
-				} else {
-					documentNumber = rsInvoice.ID.String()[:8]
-				}
-			}
-			subject, htmlBody := mail.RenderTemplateReplacements(chosenSubject, chosenBody, name, documentNumber)
-
-			go func(to, invNum, sub, html, pdf string) {
-				if err := s.mailer.SendInvoicePaidEmail(to, invNum, pdf, sub, html); err != nil {
-					log.Printf("[MAIL-ERR] Firing automated payment confirmation receipt failed: %v", err)
-				}
-			}(rsInvoice.ContactTo.Email, documentNumber, subject, htmlBody, pdfBase64)
 		}
 	}
 
