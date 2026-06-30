@@ -221,9 +221,9 @@ func ApplyPDFCollections(data *InvoiceData, items []InvoiceItem, sections []Invo
 				data.GrandTotal = item.Amount
 			} else {
 				if sfaItemIndex == 0 {
-					data.Subtotal = item.Amount 
+					data.Subtotal = item.Amount
 				} else if sfaItemIndex == 1 {
-					data.TaxTotal = item.Amount 
+					data.TaxTotal = item.Amount
 				}
 				sfaItemIndex++
 			}
@@ -234,6 +234,7 @@ func ApplyPDFCollections(data *InvoiceData, items []InvoiceItem, sections []Invo
 			data.SettlementItems = append(data.SettlementItems, map[string]interface{}{
 				"label":       displayLabel,
 				"amount":      item.Amount,
+				"bas_code":    trimBas,
 				"is_bold":     isBold,
 				"is_negative": isNegative,
 				"row_class":   rowClass,

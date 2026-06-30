@@ -434,6 +434,10 @@ func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateI
 		return nil, "", fmt.Errorf("failed mapping invoice data: %w", err)
 	}
 
+	if freq, ok := dataMap["invoice_frequency"].(string); ok && freq != "" {
+		dataMap["invoice_frequency"] = strings.ToLower(freq[:1]) + freq[1:]
+	}
+
 	// Fixed Page Sequence Array
 	pageOrder := map[string]int{
 		"Calculation Statement": 1,
