@@ -195,6 +195,7 @@ func (r *Repository) persistItem(ctx context.Context, tx *sqlx.Tx, item *Item, i
 		item.FieldKey, item.Amount, item.InvoiceSectionID, item.SortOrder, exprJSON, item.IsFinal)
 	return err
 }
+
 func (r *Repository) EvaluateFormulas(ctx context.Context, items []*Item) error {
 	if len(items) == 0 {
 		return nil
@@ -206,18 +207,36 @@ func (r *Repository) EvaluateFormulas(ctx context.Context, items []*Item) error 
 	}
 
 	contextValues := make(map[string]float64)
+	processedKeys := make(map[string]bool)
 
+	// Step 1: Pre-populate context values safely
 	for _, item := range sorted {
-		if item.BASCode != nil {
-			contextValues[string(*item.BASCode)] = item.Amount
-		}
-		if item.FieldKey != nil && *item.FieldKey != "" {
-			contextValues[*item.FieldKey] = item.Amount
+		if item.Expression == nil {
+			key := ""
+			if item.FieldKey != nil {
+				key = *item.FieldKey
+			}
+
+			// If this specific variable key has already been added from an earlier section, skip it to prevent double-accumulating duplicate rows
+			if key != "" {
+				if processedKeys[key] {
+					continue
+				}
+				processedKeys[key] = true
+			}
+
+			if item.BASCode != nil {
+				contextValues[string(*item.BASCode)] += item.Amount
+			}
+			if item.FieldKey != nil && *item.FieldKey != "" {
+				contextValues[*item.FieldKey] = item.Amount
+			}
 		}
 	}
 
 	formulaCtx := formula.Context{Context: ctx, Values: contextValues}
 
+	// Step 2: Evaluate formulas following the dependency chain topology graph
 	for _, item := range sorted {
 		if item.Expression != nil {
 			// Validate expression is a proper JSON object
@@ -272,13 +291,6 @@ func (r *Repository) EvaluateFormulas(ctx context.Context, items []*Item) error 
 			}
 			if item.BASCode != nil {
 				contextValues[string(*item.BASCode)] = result
-			}
-		} else {
-			if item.BASCode != nil {
-				contextValues[string(*item.BASCode)] = item.Amount
-			}
-			if item.FieldKey != nil && *item.FieldKey != "" {
-				contextValues[*item.FieldKey] = item.Amount
 			}
 		}
 	}
