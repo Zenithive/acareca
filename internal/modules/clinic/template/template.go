@@ -72,7 +72,7 @@ func sharedCSS() string {
 
 :root { 
   --primary-color: {{#if template_settings.primary_color}}{{template_settings.primary_color}}{{else}}#1f4e5f{{/if}}; 
-  --accent-color: {{#if template_settings.accent_color}}{{template_settings.accent_color}}{{else}}#1f4e5f{{/if}};
+  --accent-color: {{#if template_settings.accent_color}}{{template_settings.accent_color}}{{else}}#5f96b4{{/if}};
   --text-dark: #000000;
   --pos-green: #007a3d;
 }

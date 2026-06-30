@@ -565,7 +565,7 @@ func (s *Service) applyInvoiceSettings(data *InvoiceData, st *Setting) {
 	if st == nil {
 		data.TemplateSettings = map[string]interface{}{
 			"primary_color":          "#1f4e5f",
-			"accent_color":           "#1f4e5f",
+			"accent_color":           "#5f96b4",
 			"body_font_family":       "Arial",
 			"body_font_family_css":   "Arial",
 			"header_font_family":     "Arial",
