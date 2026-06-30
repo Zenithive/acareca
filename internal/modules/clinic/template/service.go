@@ -434,6 +434,11 @@ func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateI
 		return nil, "", fmt.Errorf("failed mapping invoice data: %w", err)
 	}
 
+	if freq, ok := dataMap["invoice_frequency"].(string); ok && freq != "" {
+		freqLower := strings.ToLower(freq)
+		dataMap["invoice_frequency"] = strings.ToUpper(freqLower[:1]) + freqLower[1:]
+	}
+
 	// Fixed Page Sequence Array
 	pageOrder := map[string]int{
 		"Calculation Statement": 1,
@@ -501,7 +506,7 @@ func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateI
 				dataMap["invoice_number"] = ts["remittance_invoice_number"]
 			}
 
-			// --- FIX: Translate style layout into explicit template-safe boolean flags ---
+			// Translate table border style into template-safe boolean flags
 			if styleStr, exists := ts["table_style"].(string); exists {
 				dataMap["table_style_bordered"] = (styleStr == "bordered")
 				dataMap["table_style_striped"] = (styleStr == "striped")

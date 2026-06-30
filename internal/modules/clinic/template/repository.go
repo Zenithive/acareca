@@ -189,10 +189,10 @@ func (r *Repository) UpdateSetting(ctx context.Context, st *Setting, templateId 
 	const q = `
 		INSERT INTO tbl_template_setting (
 			id, mapping_id, primary_color, accent_color, body_font_family, header_font_family,
-			is_logo, logo_id, letterhead_id, footer_id, terms_text, is_watermark, watermark_text, is_tax, table_style
+			is_logo, logo_id, letterhead_id, footer_id, terms_text, is_watermark, watermark_text, is_tax, table_style, payment_terms
 		) VALUES (
 			:id, :mapping_id, :primary_color, :accent_color, :body_font_family, :header_font_family,
-			:is_logo, :logo_id, :letterhead_id, :footer_id, :terms_text, :is_watermark, :watermark_text, :is_tax, :table_style
+			:is_logo, :logo_id, :letterhead_id, :footer_id, :terms_text, :is_watermark, :watermark_text, :is_tax, :table_style, :payment_terms
 		)
 		ON CONFLICT (id) DO UPDATE SET
 			mapping_id         = EXCLUDED.mapping_id,
@@ -209,6 +209,7 @@ func (r *Repository) UpdateSetting(ctx context.Context, st *Setting, templateId 
 			watermark_text     = EXCLUDED.watermark_text,
 			is_tax             = EXCLUDED.is_tax,
 			table_style        = EXCLUDED.table_style,
+			payment_terms      = EXCLUDED.payment_terms,
 			updated_at         = NOW()
 		RETURNING id, created_at, updated_at`
 
@@ -249,10 +250,10 @@ func (r *Repository) CreateSetting(ctx context.Context, st *Setting) error {
 	const q = `
 		INSERT INTO tbl_template_setting (
 			id, mapping_id, primary_color, accent_color, body_font_family, header_font_family,
-			is_logo, logo_id, letterhead_id, footer_id, terms_text, is_watermark, watermark_text, is_tax, table_style
+			is_logo, logo_id, letterhead_id, footer_id, terms_text, is_watermark, watermark_text, is_tax, table_style, payment_terms
 		) VALUES (
 			:id, :mapping_id, :primary_color, :accent_color, :body_font_family, :header_font_family,
-			:is_logo, :logo_id, :letterhead_id, :footer_id, :terms_text, :is_watermark, :watermark_text, :is_tax, :table_style
+			:is_logo, :logo_id, :letterhead_id, :footer_id, :terms_text, :is_watermark, :watermark_text, :is_tax, :table_style, :payment_terms
 		)
 		RETURNING created_at`
 

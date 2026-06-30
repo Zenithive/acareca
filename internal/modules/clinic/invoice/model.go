@@ -35,6 +35,7 @@ type RqInvoiceSetting struct {
 	LetterheadID     *string `json:"letterheadId,omitempty"`
 	FooterID         *string `json:"footerId,omitempty"`
 	TermsText        *string `json:"termsText,omitempty"`
+	PaymentTerms     *string `json:"paymentTerms,omitempty"`
 	IsWatermark      *bool   `json:"isWatermark,omitempty"`
 	WatermarkText    *string `json:"watermarkText,omitempty"`
 	IsTax            *bool   `json:"isTax,omitempty"`
