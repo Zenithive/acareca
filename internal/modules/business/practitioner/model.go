@@ -8,41 +8,39 @@ import (
 )
 
 type Practitioner struct {
-	ID                 uuid.UUID  `db:"id"`
-	UserID             uuid.UUID  `db:"user_id"`
-	ABN                *string    `db:"abn"`
-	Verified           bool       `db:"verified"`
-	SubscriptionStatus string     `db:"subscription_status"`
-	StripeCustomerID   *string    `db:"stripe_customer_id"`
-	CreatedAt          time.Time  `db:"created_at"`
-	UpdatedAt          time.Time  `db:"updated_at"`
-	DeletedAt          *time.Time `db:"deleted_at"`
-	EntityType         string     `db:"entity_type"`
-	EntityName         *string    `db:"entity_name"`
-	ACN                *string    `db:"acn"`
-	Address            *string    `db:"address"`
-	Profession         *string    `db:"profession"`
+	ID               uuid.UUID  `db:"id"`
+	UserID           uuid.UUID  `db:"user_id"`
+	ABN              *string    `db:"abn"`
+	Verified         bool       `db:"verified"`
+	StripeCustomerID *string    `db:"stripe_customer_id"`
+	CreatedAt        time.Time  `db:"created_at"`
+	UpdatedAt        time.Time  `db:"updated_at"`
+	DeletedAt        *time.Time `db:"deleted_at"`
+	EntityType       string     `db:"entity_type"`
+	EntityName       *string    `db:"entity_name"`
+	ACN              *string    `db:"acn"`
+	Address          *string    `db:"address"`
+	Profession       *string    `db:"profession"`
 }
 
 type PractitionerWithUser struct {
-	ID                 uuid.UUID  `db:"id"`
-	UserID             uuid.UUID  `db:"user_id"`
-	ABN                *string    `db:"abn"`
-	Verified           bool       `db:"verified"`
-	SubscriptionStatus string     `db:"subscription_status"`
-	StripeCustomerID   *string    `db:"stripe_customer_id"`
-	CreatedAt          time.Time  `db:"created_at"`
-	UpdatedAt          time.Time  `db:"updated_at"`
-	DeletedAt          *time.Time `db:"deleted_at"`
-	EntityType         string     `db:"entity_type"`
-	EntityName         *string    `db:"entity_name"`
-	ACN                *string    `db:"acn"`
-	Address            *string    `db:"address"`
-	Profession         *string    `db:"profession"`
-	Email              string     `db:"email"`
-	FirstName          string     `db:"first_name"`
-	LastName           string     `db:"last_name"`
-	Phone              *string    `db:"phone"`
+	ID               uuid.UUID  `db:"id"`
+	UserID           uuid.UUID  `db:"user_id"`
+	ABN              *string    `db:"abn"`
+	Verified         bool       `db:"verified"`
+	StripeCustomerID *string    `db:"stripe_customer_id"`
+	CreatedAt        time.Time  `db:"created_at"`
+	UpdatedAt        time.Time  `db:"updated_at"`
+	DeletedAt        *time.Time `db:"deleted_at"`
+	EntityType       string     `db:"entity_type"`
+	EntityName       *string    `db:"entity_name"`
+	ACN              *string    `db:"acn"`
+	Address          *string    `db:"address"`
+	Profession       *string    `db:"profession"`
+	Email            string     `db:"email"`
+	FirstName        string     `db:"first_name"`
+	LastName         string     `db:"last_name"`
+	Phone            *string    `db:"phone"`
 }
 
 type RqCreatePractitioner struct {
@@ -74,43 +72,40 @@ type RsUserInfo struct {
 }
 
 type RsPractitioner struct {
-	ID                 uuid.UUID   `json:"id"`
-	ABN                *string     `json:"abn,omitempty"`
-	Verified           bool        `json:"verified"`
-	SubscriptionStatus string      `json:"subscription_status"`
-	User               *RsUserInfo `json:"user"`
-	EntityType         string      `json:"entity_type"`
-	EntityName         *string     `json:"entity_name"`
-	ACN                *string     `json:"acn"`
-	Address            *string     `json:"address"`
-	Profession         *string     `json:"profession"`
+	ID         uuid.UUID   `json:"id"`
+	ABN        *string     `json:"abn,omitempty"`
+	Verified   bool        `json:"verified"`
+	User       *RsUserInfo `json:"user"`
+	EntityType string      `json:"entity_type"`
+	EntityName *string     `json:"entity_name"`
+	ACN        *string     `json:"acn"`
+	Address    *string     `json:"address"`
+	Profession *string     `json:"profession"`
 }
 
 func (p *Practitioner) ToRs() *RsPractitioner {
 	return &RsPractitioner{
-		ID:                 p.ID,
-		ABN:                p.ABN,
-		Verified:           p.Verified,
-		SubscriptionStatus: p.SubscriptionStatus,
-		EntityType:         p.EntityType,
-		EntityName:         p.EntityName,
-		ACN:                p.ACN,
-		Address:            p.Address,
-		Profession:         p.Profession,
+		ID:         p.ID,
+		ABN:        p.ABN,
+		Verified:   p.Verified,
+		EntityType: p.EntityType,
+		EntityName: p.EntityName,
+		ACN:        p.ACN,
+		Address:    p.Address,
+		Profession: p.Profession,
 	}
 }
 
 func (p *PractitionerWithUser) ToRs() *RsPractitioner {
 	return &RsPractitioner{
-		ID:                 p.ID,
-		ABN:                p.ABN,
-		Verified:           p.Verified,
-		SubscriptionStatus: p.SubscriptionStatus,
-		EntityType:         p.EntityType,
-		EntityName:         p.EntityName,
-		ACN:                p.ACN,
-		Address:            p.Address,
-		Profession:         p.Profession,
+		ID:         p.ID,
+		ABN:        p.ABN,
+		Verified:   p.Verified,
+		EntityType: p.EntityType,
+		EntityName: p.EntityName,
+		ACN:        p.ACN,
+		Address:    p.Address,
+		Profession: p.Profession,
 		User: &RsUserInfo{
 			ID:         p.UserID,
 			Email:      p.Email,

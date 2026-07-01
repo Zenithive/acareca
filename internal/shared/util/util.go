@@ -21,13 +21,6 @@ import (
 
 const UserIDKey = "userID"
 const EntityIDKey = "EntityID"
-const SubscriptionStatusKey = "subscription_status"
-
-// Practitioner subscription status values stored in JWT and DB.
-const (
-	SubscriptionStatusPending  = "PENDING"
-	SubscriptionStatusComplete = "COMPLETE"
-)
 
 var validate = validator.New()
 
@@ -89,19 +82,17 @@ func sanitizeQueryParams(c *gin.Context) {
 }
 
 type CustomClaims struct {
-	ID                 string `json:"id"`
-	Role               string `json:"role"`
-	SubscriptionStatus string `json:"subscription_status,omitempty"`
+	ID   string `json:"id"`
+	Role string `json:"role"`
 	jwt.RegisteredClaims
 }
 
-func SignToken(userID string, id string, role string, subscriptionStatus string, ttl time.Duration, jwtSecret string) (string, error) {
+func SignToken(userID string, id string, role string, ttl time.Duration, jwtSecret string) (string, error) {
 	now := time.Now()
 
 	claims := CustomClaims{
-		ID:                 id,
-		Role:               role,
-		SubscriptionStatus: subscriptionStatus,
+		ID:   id,
+		Role: role,
 
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   userID,
@@ -399,8 +390,6 @@ func MapEventTypeToNotificationEventType(eventType EventType) []NotificationEven
 		return []NotificationEventType{EventBillingAlert}
 	case EventSubscriptionCreated, EventSubscriptionUpdated, EventSubscriptionDeleted:
 		return []NotificationEventType{EventSubscriptionAlert}
-	case EventSubscriptionExpiring, EventSubscriptionExpired:
-		return []NotificationEventType{EventSubscriptionExpiryAlert}
 	case EventUserRegistered, EventPractitionerCreated:
 		return []NotificationEventType{EventUserRegistrationAlert}
 	case EventAuditLogCreated:

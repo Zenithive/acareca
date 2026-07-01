@@ -45,7 +45,7 @@ import (
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
-func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEvent) (audit.Service, *sharednotification.Hub, notification.Repository, notification.Service, *worker.Consumer, *userSubscription.ExpiryWorker) {
+func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEvent) (audit.Service, *sharednotification.Hub, notification.Repository, notification.Service, *worker.Consumer) {
 
 	// Initialize Stripe SDK
 	if cfg.StripeSecretKey == "" {
@@ -161,7 +161,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 	adminSubscriptionSvc := adminSubscription.NewService(dbConn, adminSubscriptionRepo, auditSvc, stripeClient)
 	practitionerSvc := practitioner.NewService(dbConn, practitionerRepo, adminSubscriptionSvc, userSubscriptionSvc, coaRepo, auditSvc, fyRepo, invitationRepo)
 
-	authSvc := auth.NewService(authRepo, cfg, dbConn, practitionerSvc, auditSvc, invitationSvc, practitionerRepo, accountantSvc, adminSvc, fileRepo, preferenceSvc, adminSubscriptionSvc, userSubscriptionSvc, coaRepo)
+	authSvc := auth.NewService(authRepo, cfg, dbConn, practitionerSvc, auditSvc, invitationSvc, practitionerRepo, accountantSvc, adminSvc, fileRepo, preferenceSvc)
 	authHandler := auth.NewHandler(authSvc)
 	auth.RegisterRoutes(v1, authHandler, middleware.Auth(cfg))
 
@@ -265,10 +265,6 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 	// ============ BUILDER ROUTES (requires notificationPublisher) ============
 	RegisterBuilderRoutes(v1, cfg, dbConn, clinicSvc, coaSvc, coaRepo, practitionerSvc, accountantRepo, authRepo, auditSvc, invitationSvc, invitationRepo, notificationSvc, adminRepo, authSvc)
 
-	// ============ SUBSCRIPTION EXPIRY WORKER ============
-	notificationPublisherForWorker := sharednotification.NewPublisher(notification.NewServiceAdapter(notificationSvc), adminRepo)
-	subscriptionExpiryWorker := userSubscription.NewExpiryWorker(userSubscriptionRepo, notificationPublisherForWorker)
-
-	return auditSvc, notifier, notificationRepo, notificationSvc, notificationConsumer, subscriptionExpiryWorker
+	return auditSvc, notifier, notificationRepo, notificationSvc, notificationConsumer
 
 }

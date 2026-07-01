@@ -221,15 +221,11 @@ func (h *handler) Logout(c *gin.Context) {
 // @Description Returns the URL to redirect the user to for Google OAuth
 // @Tags auth
 // @Produce json
-// @Param state query string false "OAuth state parameter (optional, will be generated if not provided)"
 // @Success 200 {object} RsGoogleAuthURL
 // @Failure 500 {object} response.RsError
 // @Router /auth/google [get]
 func (h *handler) GoogleAuthURL(c *gin.Context) {
-	state := c.Query("state")
-	if state == "" {
-		state = util.NewUUID()
-	}
+	state := util.NewUUID()
 	result := h.svc.GoogleAuthURL(state)
 	response.JSON(c, http.StatusOK, result, "Google OAuth consent-screen URL fetched successfully")
 }

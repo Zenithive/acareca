@@ -25,7 +25,7 @@ type ModelInvitationRepo struct {
 }
 
 type IService interface {
-	CreatePractitioner(ctx context.Context, req *RqCreatePractitioner) (*RsPractitioner, error)
+	CreatePractitioner(ctx context.Context, req *RqCreatePractitioner, tx *sqlx.Tx) (*RsPractitioner, error)
 	GetPractitioner(ctx context.Context, id uuid.UUID) (*RsPractitioner, error)
 	DeletePractitioner(ctx context.Context, id uuid.UUID) error
 	ListPractitioners(ctx context.Context, f *Filter) (*util.RsList, error)
@@ -57,7 +57,7 @@ func NewService(db *sqlx.DB, repo Repository, subscription subscription.Service,
 	return svc
 }
 
-func (s *service) CreatePractitioner(ctx context.Context, req *RqCreatePractitioner) (*RsPractitioner, error) {
+func (s *service) CreatePractitioner(ctx context.Context, req *RqCreatePractitioner, tx *sqlx.Tx) (*RsPractitioner, error) {
 	existing, err := s.repo.GetPractitionerByUserID(ctx, req.UserID)
 	if err == nil && existing != nil {
 		return existing, nil
@@ -65,9 +65,9 @@ func (s *service) CreatePractitioner(ctx context.Context, req *RqCreatePractitio
 
 	var t *RsPractitioner
 
-	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+	onboardWork := func(workCtx context.Context, activeTx *sqlx.Tx) error {
 		var err error
-		t, err = s.repo.CreatePractitioner(ctx, &RqCreatePractitioner{
+		t, err = s.repo.CreatePractitioner(workCtx, &RqCreatePractitioner{
 			UserID:     req.UserID,
 			EntityType: req.EntityType,
 			EntityName: req.EntityName,
@@ -75,37 +75,44 @@ func (s *service) CreatePractitioner(ctx context.Context, req *RqCreatePractitio
 			ACN:        req.ACN,
 			Address:    req.Address,
 			Profession: req.Profession,
-		}, tx)
+		}, activeTx)
 		if err != nil {
 			return err
 		}
 
-		trial, err := s.subscription.FindByName(ctx, "Trial")
+		trial, err := s.subscription.FindByName(workCtx, "Trial")
 		if err != nil {
 			return err
 		}
 
 		start := time.Now()
 		end := start.AddDate(0, 0, trial.DurationDays)
-		_, err = s.userSubscription.Create(ctx, t.ID, &userSubscription.RqCreatePractitionerSubscription{
+		_, err = s.userSubscription.Create(workCtx, t.ID, &userSubscription.RqCreatePractitionerSubscription{
 			SubscriptionID: trial.ID,
 			StartDate:      start.Format(time.RFC3339),
 			EndDate:        end.Format(time.RFC3339),
 			Status:         userSubscription.StatusActive,
-		}, tx)
+		}, activeTx)
 		if err != nil {
 			log.Printf("onboarding: create trial subscription for practitioner %s: %v", t.ID, err)
 			return err
 		}
 
-		if err := coa.SeedDefaultsForPractitioner(ctx, s.coaRepo, t.ID, tx); err != nil {
+		if err := coa.SeedDefaultsForPractitioner(workCtx, s.coaRepo, t.ID, activeTx); err != nil {
 			log.Printf("onboarding: seed default chart of accounts for practitioner %s: %v", t.ID, err)
 			return err
 		}
 		return nil
-	})
-	if err != nil {
-		return nil, err
+	}
+
+	if tx != nil {
+		if err := onboardWork(ctx, tx); err != nil {
+			return nil, err
+		}
+	} else {
+		if err := util.RunInTransaction(ctx, s.db, onboardWork); err != nil {
+			return nil, err
+		}
 	}
 
 	return t, nil

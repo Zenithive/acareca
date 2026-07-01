@@ -8,7 +8,7 @@ import (
 
 func RegisterRoutes(rg *gin.RouterGroup, h *Handler, cfg *config.Config) {
 	g := rg.Group("/practitioner")
-	g.Use(middleware.Auth(cfg), middleware.RequireActiveSubscription(), middleware.AuditContext())
+	g.Use(middleware.Auth(cfg), middleware.AuditContext())
 	g.GET("/lock-date", h.GetLockDate)
 	g.PATCH("/lock-date", h.UpdateLockDate)
 	g.GET("", h.ListPractitioners)

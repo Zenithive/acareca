@@ -332,12 +332,12 @@ func (s *service) issueTokens(ctx context.Context, clinic *Clinic, clinicID stri
 		roleString = *clinic.Role
 	}
 
-	accessToken, err := util.SignToken(clinic.ID.String(), clinicID, roleString, "", 15*time.Hour, s.cfg.JWTSecret)
+	accessToken, err := util.SignToken(clinic.ID.String(), clinicID, roleString, 15*time.Hour, s.cfg.JWTSecret)
 	if err != nil {
 		return nil, err
 	}
 
-	refreshToken, err := util.SignToken(clinic.ID.String(), clinicID, roleString, "", 7*24*time.Hour, s.cfg.JWTSecret)
+	refreshToken, err := util.SignToken(clinic.ID.String(), clinicID, roleString, 7*24*time.Hour, s.cfg.JWTSecret)
 	if err != nil {
 		return nil, err
 	}

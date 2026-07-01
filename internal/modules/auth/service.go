@@ -14,13 +14,10 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
-	adminSubscription "github.com/iamarpitzala/acareca/internal/modules/admin/subscription"
 	"github.com/iamarpitzala/acareca/internal/modules/business/accountant"
 	"github.com/iamarpitzala/acareca/internal/modules/business/admin"
-	"github.com/iamarpitzala/acareca/internal/modules/business/coa"
 	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
-	userSubscription "github.com/iamarpitzala/acareca/internal/modules/business/subscription"
 	filemod "github.com/iamarpitzala/acareca/internal/modules/file"
 	"github.com/iamarpitzala/acareca/internal/modules/notification/preference"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
@@ -62,25 +59,22 @@ type Service interface {
 }
 
 type service struct {
-	repo                 Repository
-	cfg                  *config.Config
-	db                   *sqlx.DB
-	oauthConfig          *oauth2.Config
-	mailer               *mail.Client
-	practitionerSvc      practitioner.IService
-	auditSvc             audit.Service
-	invitationSvc        invitation.Service
-	practitionerRepo     practitioner.Repository
-	accountantSvc        accountant.IService
-	adminSvc             admin.IService
-	fileRepo             filemod.Repository
-	PreferenceSvc        preference.IService
-	adminSubscriptionSvc adminSubscription.Service
-	userSubscriptionSvc  userSubscription.Service
-	coaRepo              coa.Repository
+	repo             Repository
+	cfg              *config.Config
+	db               *sqlx.DB
+	oauthConfig      *oauth2.Config
+	mailer           *mail.Client
+	practitionerSvc  practitioner.IService
+	auditSvc         audit.Service
+	invitationSvc    invitation.Service
+	practitionerRepo practitioner.Repository
+	accountantSvc    accountant.IService
+	adminSvc         admin.IService
+	fileRepo         filemod.Repository
+	PreferenceSvc    preference.IService
 }
 
-func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSvc practitioner.IService, auditSvc audit.Service, invitationSvc invitation.Service, practitionerRepo practitioner.Repository, accountantSvc accountant.IService, adminSvc admin.IService, fileRepo filemod.Repository, preferenceSvc preference.IService, adminSubscriptionSvc adminSubscription.Service, userSubscriptionSvc userSubscription.Service, coaRepo coa.Repository) Service {
+func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSvc practitioner.IService, auditSvc audit.Service, invitationSvc invitation.Service, practitionerRepo practitioner.Repository, accountantSvc accountant.IService, adminSvc admin.IService, fileRepo filemod.Repository, preferenceSvc preference.IService) Service {
 	oauthCfg := &oauth2.Config{
 		ClientID:     cfg.GoogleClientID,
 		ClientSecret: cfg.GoogleClientSecret,
@@ -92,22 +86,19 @@ func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSv
 		Endpoint: google.Endpoint,
 	}
 	return &service{
-		repo:                 repo,
-		cfg:                  cfg,
-		oauthConfig:          oauthCfg,
-		db:                   db,
-		mailer:               mail.NewClient(cfg.ResendAPIKey, cfg.SenderEmail),
-		practitionerSvc:      practitionerSvc,
-		auditSvc:             auditSvc,
-		invitationSvc:        invitationSvc,
-		practitionerRepo:     practitionerRepo,
-		accountantSvc:        accountantSvc,
-		adminSvc:             adminSvc,
-		fileRepo:             fileRepo,
-		PreferenceSvc:        preferenceSvc,
-		adminSubscriptionSvc: adminSubscriptionSvc,
-		userSubscriptionSvc:  userSubscriptionSvc,
-		coaRepo:              coaRepo,
+		repo:             repo,
+		cfg:              cfg,
+		oauthConfig:      oauthCfg,
+		db:               db,
+		mailer:           mail.NewClient(cfg.ResendAPIKey, cfg.SenderEmail),
+		practitionerSvc:  practitionerSvc,
+		auditSvc:         auditSvc,
+		invitationSvc:    invitationSvc,
+		practitionerRepo: practitionerRepo,
+		accountantSvc:    accountantSvc,
+		adminSvc:         adminSvc,
+		fileRepo:         fileRepo,
+		PreferenceSvc:    preferenceSvc,
 	}
 }
 
@@ -146,17 +137,18 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 	var tokenID uuid.UUID
 
 	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
-		created, err = s.repo.CreateUser(ctx, u, tx)
-		if err != nil {
-			if errors.Is(err, ErrEmailTaken) {
+		var txErr error
+		created, txErr = s.repo.CreateUser(ctx, u, tx)
+		if txErr != nil {
+			if errors.Is(txErr, ErrEmailTaken) {
 				return ErrEmailTaken
 			}
-			return err
+			return txErr
 		}
 
 		switch created.Role {
 		case util.RolePractitioner:
-			p, err := s.practitionerRepo.CreatePractitioner(ctx, &practitioner.RqCreatePractitioner{
+			p, txErr2 := s.practitionerSvc.CreatePractitioner(ctx, &practitioner.RqCreatePractitioner{
 				UserID:     created.ID.String(),
 				EntityType: req.EntityType,
 				EntityName: req.EntityName,
@@ -165,34 +157,12 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 				Address:    req.Address,
 				Profession: req.Profession,
 			}, tx)
-			if err != nil {
-				return fmt.Errorf("create practitioner: %w", err)
+			if txErr2 != nil {
+				return fmt.Errorf("create practitioner: %w", txErr2)
 			}
 			entityID = p.ID
-
-			trial, err := s.adminSubscriptionSvc.FindByName(ctx, "Trial")
-			if err != nil {
-				return fmt.Errorf("find trial subscription: %w", err)
-			}
-
-			start := time.Now()
-			end := start.AddDate(0, 0, trial.DurationDays)
-			_, err = s.userSubscriptionSvc.Create(ctx, p.ID, &userSubscription.RqCreatePractitionerSubscription{
-				SubscriptionID: trial.ID,
-				StartDate:      start.Format(time.RFC3339),
-				EndDate:        end.Format(time.RFC3339),
-				Status:         userSubscription.StatusActive,
-			}, tx)
-			if err != nil {
-				return fmt.Errorf("create trial subscription: %w", err)
-			}
-
-			if err = coa.SeedDefaultsForPractitioner(ctx, s.coaRepo, p.ID, tx); err != nil {
-				return fmt.Errorf("seed default COA: %w", err)
-			}
-
 		case util.RoleAccountant:
-			a, err = s.accountantSvc.CreateAccountant(ctx, &accountant.RqCreateAccountant{
+			a, txErr = s.accountantSvc.CreateAccountant(ctx, &accountant.RqCreateAccountant{
 				UserID:     created.ID.String(),
 				EntityType: req.EntityType,
 				EntityName: req.EntityName,
@@ -201,12 +171,12 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 				Address:    req.Address,
 				Profession: req.Profession,
 			}, tx)
-			if err == nil {
+			if txErr == nil {
 				entityID = a.ID
 			}
 		}
-		if err != nil {
-			return fmt.Errorf("create role: %w", err)
+		if txErr != nil {
+			return fmt.Errorf("create role: %w", txErr)
 		}
 
 		tokenID = uuid.New()
@@ -799,25 +769,12 @@ func (s *service) isUserVerified(ctx context.Context, user *User) (bool, error) 
 
 // issueTokens creates access/refresh tokens and persists a new session.
 func (s *service) issueTokens(ctx context.Context, user *User, entityID string) (*RsToken, error) {
-	// For practitioners, fetch the current subscription_status to embed in the token.
-	subscriptionStatus := ""
-	if user.Role == util.RolePractitioner {
-		var status string
-		err := s.db.GetContext(ctx, &status,
-			`SELECT subscription_status FROM tbl_practitioner WHERE user_id = $1 AND deleted_at IS NULL`, user.ID)
-		if err != nil {
-			// Non-fatal: default to PENDING so access is denied until confirmed.
-			status = util.SubscriptionStatusPending
-		}
-		subscriptionStatus = status
-	}
-
-	accessToken, err := util.SignToken(user.ID.String(), entityID, user.Role, subscriptionStatus, 15*time.Hour, s.cfg.JWTSecret)
+	accessToken, err := util.SignToken(user.ID.String(), entityID, user.Role, 15*time.Hour, s.cfg.JWTSecret)
 	if err != nil {
 		return nil, err
 	}
 
-	refreshToken, err := util.SignToken(user.ID.String(), entityID, user.Role, subscriptionStatus, 7*24*time.Hour, s.cfg.JWTSecret)
+	refreshToken, err := util.SignToken(user.ID.String(), entityID, user.Role, 7*24*time.Hour, s.cfg.JWTSecret)
 	if err != nil {
 		return nil, err
 	}

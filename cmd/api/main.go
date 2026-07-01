@@ -88,7 +88,7 @@ func main() {
 	r.Use(middleware.CORS(cfg))
 	r.Use(middleware.ClientInfo())
 
-	auditSvc, notifier, notificationRepo, _, notificationConsumer, subscriptionExpiryWorker := route.RegisterRoutes(r, cfg, events)
+	auditSvc, notifier, notificationRepo, _, notificationConsumer := route.RegisterRoutes(r, cfg, events)
 
 	if events != nil {
 		go func() {
@@ -120,10 +120,6 @@ func main() {
 
 	go notification.StartRetryWorker(workerCtx, notificationRepo, notifier)
 	log.Println("✅ Notification retry worker started")
-
-	// Start subscription expiry worker
-	go subscriptionExpiryWorker.Start(workerCtx)
-	log.Println("✅ Subscription expiry worker started")
 
 	srv := &http.Server{
 		Addr:    ":" + cfg.ServerPort,
