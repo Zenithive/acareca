@@ -1,7 +1,16 @@
 -- +goose Up
 -- +goose StatementBegin
 
-CREATE TYPE practitioner_subscription_status AS ENUM ('PENDING', 'COMPLETE');
+-- Add new enum values to existing type if they don't exist
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumlabel = 'PENDING' AND enumtypid = 'practitioner_subscription_status'::regtype) THEN
+        ALTER TYPE practitioner_subscription_status ADD VALUE 'PENDING';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumlabel = 'COMPLETE' AND enumtypid = 'practitioner_subscription_status'::regtype) THEN
+        ALTER TYPE practitioner_subscription_status ADD VALUE 'COMPLETE';
+    END IF;
+END $$;
 
 ALTER TABLE tbl_practitioner
     ADD COLUMN IF NOT EXISTS subscription_status practitioner_subscription_status NOT NULL DEFAULT 'PENDING';
@@ -29,6 +38,6 @@ DROP INDEX IF EXISTS idx_subscription_active;
 DROP INDEX IF EXISTS idx_subscription_expiry;
 ALTER TABLE tbl_practitioner_subscription DROP CONSTRAINT IF EXISTS uq_stripe_subscription_id;
 ALTER TABLE tbl_practitioner DROP COLUMN IF EXISTS subscription_status;
-DROP TYPE IF EXISTS practitioner_subscription_status;
+-- Note: Cannot safely remove enum values once added, so we leave them
 
 -- +goose StatementEnd
