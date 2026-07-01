@@ -41,7 +41,7 @@ func (r *repository) CreatePractitioner(ctx context.Context, req *RqCreatePracti
 	query := `
 		INSERT INTO tbl_practitioner (user_id, entity_type, entity_name, abn, acn, address, profession)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
-		RETURNING id, user_id, abn, verified, stripe_customer_id, entity_type, entity_name, acn, address, profession, created_at, updated_at, deleted_at
+		RETURNING id, user_id, abn, verified, subscription_status, stripe_customer_id, entity_type, entity_name, acn, address, profession, created_at, updated_at, deleted_at
 	`
 	var p Practitioner
 	if err := tx.QueryRowxContext(ctx, query, req.UserID, req.EntityType, req.EntityName, req.ABN, req.ACN, req.Address, req.Profession).StructScan(&p); err != nil {
@@ -65,7 +65,7 @@ func (r *repository) DeletePractitioner(ctx context.Context, id uuid.UUID) error
 
 func (r *repository) GetPractitioner(ctx context.Context, id uuid.UUID) (*RsPractitioner, error) {
 	query := `
-		SELECT p.id, p.user_id, p.abn, p.verified, p.stripe_customer_id, p.entity_type, p.entity_name, p.address, p.acn, p.profession, p.created_at, p.updated_at, p.deleted_at,
+		SELECT p.id, p.user_id, p.abn, p.verified, p.subscription_status, p.stripe_customer_id, p.entity_type, p.entity_name, p.address, p.acn, p.profession, p.created_at, p.updated_at, p.deleted_at,
 		       u.email, u.first_name, u.last_name, u.phone
 		FROM tbl_practitioner p
 		JOIN tbl_user u ON u.id = p.user_id AND u.deleted_at IS NULL
@@ -80,7 +80,7 @@ func (r *repository) GetPractitioner(ctx context.Context, id uuid.UUID) (*RsPrac
 
 func (r *repository) GetPractitionerByUserID(ctx context.Context, userID string) (*RsPractitioner, error) {
 	query := `
-		SELECT id, user_id, abn, verified, stripe_customer_id, entity_type, entity_name, address, acn, profession, created_at, updated_at, deleted_at 
+		SELECT id, user_id, abn, verified, subscription_status, stripe_customer_id, entity_type, entity_name, address, acn, profession, created_at, updated_at, deleted_at 
 		FROM tbl_practitioner 
 		WHERE user_id = $1 AND deleted_at IS NULL
 	`
@@ -108,7 +108,7 @@ var practitionerSearchCols = []string{"u.first_name", "u.last_name", "u.email", 
 
 func (r *repository) ListPractitioners(ctx context.Context, f common.Filter) ([]*PractitionerWithUser, error) {
 	base := `
-		SELECT p.id, p.user_id, p.abn, p.verified, p.stripe_customer_id,
+		SELECT p.id, p.user_id, p.abn, p.verified, p.subscription_status, p.stripe_customer_id,
 		COALESCE(p.entity_type, 'SOLE_TRADER') as entity_type, 
 		COALESCE(p.entity_name, '') as entity_name,
 		p.acn, p.address, p.profession, p.created_at, p.updated_at, p.deleted_at,
@@ -143,7 +143,7 @@ func (r *repository) CountPractitioners(ctx context.Context, f common.Filter) (i
 
 func (r *repository) ListPractitionersForAccountant(ctx context.Context, accountantID uuid.UUID, f common.Filter) ([]*PractitionerWithUser, error) {
 	base := `
-		SELECT p.id, p.user_id, p.abn, p.verified, p.stripe_customer_id, p.created_at, p.updated_at, p.deleted_at,
+		SELECT p.id, p.user_id, p.abn, p.verified, p.subscription_status, p.stripe_customer_id, p.created_at, p.updated_at, p.deleted_at,
 		       u.email, u.first_name, u.last_name, u.phone
 		FROM tbl_practitioner p
 		JOIN tbl_user u ON u.id = p.user_id AND u.deleted_at IS NULL

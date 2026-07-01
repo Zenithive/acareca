@@ -50,6 +50,8 @@ func Error(c *gin.Context, status int, err error) {
 		msg = "forbidden"
 	case status == http.StatusUnauthorized:
 		msg = "unauthorized"
+	case status == http.StatusPaymentRequired:
+		msg = "payment required"
 	default:
 		msg = "unknown error"
 	}

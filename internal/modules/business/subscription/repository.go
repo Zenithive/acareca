@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/shared/common"
+	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -25,6 +26,11 @@ type Repository interface {
 	GetActiveSubscription(ctx context.Context, practitionerID uuid.UUID) (*RsActiveSubscription, error)
 	UpsertFromWebhook(ctx context.Context, s *WebhookUpsert) error
 	UpdateStripeFields(ctx context.Context, stripeSubID string, invoiceID *string, status Status, endDate time.Time) error
+	ListExpiringSubscriptions(ctx context.Context, daysBeforeExpiry int) ([]*PractitionerSubscription, error)
+	ListExpiredSubscriptions(ctx context.Context) ([]*PractitionerSubscription, error)
+	MarkAsExpired(ctx context.Context, id int) error
+	MarkPractitionerSubscriptionPending(ctx context.Context, practitionerID uuid.UUID) error
+	MarkPractitionerSubscriptionComplete(ctx context.Context, practitionerID uuid.UUID) error
 }
 
 type repository struct {
@@ -198,23 +204,19 @@ func (r *repository) GetActiveSubscription(ctx context.Context, practitionerID u
 }
 
 func (r *repository) UpsertFromWebhook(ctx context.Context, s *WebhookUpsert) error {
-	tx, err := r.db.BeginTxx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-
-	deactivateQuery := `
+	var err error
+	err = util.RunInTransaction(ctx, r.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		deactivateQuery := `
         UPDATE tbl_practitioner_subscription
         SET status = 'INACTIVE', updated_at = $2
         WHERE practitioner_id = $1 AND status = 'ACTIVE'
     `
-	now := time.Now()
-	if _, err = tx.ExecContext(ctx, deactivateQuery, s.PractitionerID, now); err != nil {
-		return fmt.Errorf("deactivate old plans: %w", err)
-	}
+		now := time.Now()
+		if _, err = tx.ExecContext(ctx, deactivateQuery, s.PractitionerID, now); err != nil {
+			return fmt.Errorf("deactivate old plans: %w", err)
+		}
 
-	upsertQuery := `
+		upsertQuery := `
         INSERT INTO tbl_practitioner_subscription
             (practitioner_id, subscription_id, stripe_subscription_id, stripe_invoice_id, status, start_date, end_date, created_at, updated_at)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)
@@ -224,15 +226,20 @@ func (r *repository) UpsertFromWebhook(ctx context.Context, s *WebhookUpsert) er
             stripe_invoice_id = EXCLUDED.stripe_invoice_id,
             updated_at = EXCLUDED.updated_at
     `
-	_, err = tx.ExecContext(ctx, upsertQuery,
-		s.PractitionerID, s.SubscriptionID, s.StripeSubscriptionID,
-		s.StripeInvoiceID, string(s.Status), s.StartDate, s.EndDate, now,
-	)
+		_, err = tx.ExecContext(ctx, upsertQuery,
+			s.PractitionerID, s.SubscriptionID, s.StripeSubscriptionID,
+			s.StripeInvoiceID, string(s.Status), s.StartDate, s.EndDate, now,
+		)
+		if err != nil {
+			return fmt.Errorf("upsert new subscription: %w", err)
+		}
+		return nil
+	})
 	if err != nil {
-		return fmt.Errorf("upsert new subscription: %w", err)
+		return fmt.Errorf("upsert from webhook transaction: %w", err)
 	}
 
-	return tx.Commit()
+	return nil
 }
 
 func (r *repository) UpdateStripeFields(ctx context.Context, stripeSubID string, invoiceID *string, status Status, endDate time.Time) error {
@@ -268,4 +275,92 @@ func (r *repository) mapToActiveSubscription(row *dbSubscriptionRow) *RsActiveSu
 			IsVisible:   row.SIsVisible,
 		},
 	}
+}
+
+// ListExpiringSubscriptions returns active subscriptions that will expire within the specified number of days
+func (r *repository) ListExpiringSubscriptions(ctx context.Context, daysBeforeExpiry int) ([]*PractitionerSubscription, error) {
+	query := `
+		SELECT id, practitioner_id, subscription_id, start_date, end_date, status, stripe_subscription_id, stripe_invoice_id, created_at, updated_at, deleted_at
+		FROM tbl_practitioner_subscription
+		WHERE status = 'ACTIVE'
+		  AND deleted_at IS NULL
+		  AND end_date > NOW()
+		  AND end_date <= NOW() + INTERVAL '1 day' * $1
+		ORDER BY end_date ASC
+	`
+	var list []*PractitionerSubscription
+	if err := r.db.SelectContext(ctx, &list, query, daysBeforeExpiry); err != nil {
+		return nil, fmt.Errorf("list expiring subscriptions: %w", err)
+	}
+	return list, nil
+}
+
+// ListExpiredSubscriptions returns subscriptions that have passed their end_date but still have ACTIVE status
+func (r *repository) ListExpiredSubscriptions(ctx context.Context) ([]*PractitionerSubscription, error) {
+	query := `
+		SELECT id, practitioner_id, subscription_id, start_date, end_date, status, stripe_subscription_id, stripe_invoice_id, created_at, updated_at, deleted_at
+		FROM tbl_practitioner_subscription
+		WHERE status = 'ACTIVE'
+		  AND deleted_at IS NULL
+		  AND end_date < NOW()
+		ORDER BY end_date ASC
+	`
+	var list []*PractitionerSubscription
+	if err := r.db.SelectContext(ctx, &list, query); err != nil {
+		return nil, fmt.Errorf("list expired subscriptions: %w", err)
+	}
+	return list, nil
+}
+
+// MarkAsExpired updates a subscription status to EXPIRED
+func (r *repository) MarkAsExpired(ctx context.Context, id int) error {
+	query := `
+		UPDATE tbl_practitioner_subscription
+		SET status = 'EXPIRED', updated_at = NOW()
+		WHERE id = $1 AND deleted_at IS NULL
+	`
+	res, err := r.db.ExecContext(ctx, query, id)
+	if err != nil {
+		return fmt.Errorf("mark subscription as expired: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (r *repository) MarkPractitionerSubscriptionPending(ctx context.Context, practitionerID uuid.UUID) error {
+	query := `
+		UPDATE tbl_practitioner
+		SET subscription_status = 'PENDING', updated_at = NOW()
+		WHERE id = $1 AND deleted_at IS NULL
+	`
+	res, err := r.db.ExecContext(ctx, query, practitionerID)
+	if err != nil {
+		return fmt.Errorf("mark practitioner subscription pending: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("practitioner %s not found", practitionerID)
+	}
+	return nil
+}
+
+func (r *repository) MarkPractitionerSubscriptionComplete(ctx context.Context, practitionerID uuid.UUID) error {
+	query := `
+		UPDATE tbl_practitioner
+		SET subscription_status = 'COMPLETE', updated_at = NOW()
+		WHERE id = $1 AND deleted_at IS NULL
+	`
+
+	res, err := r.db.ExecContext(ctx, query, practitionerID)
+	if err != nil {
+		return fmt.Errorf("mark practitioner subscription complete: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("practitioner %s not found", practitionerID)
+	}
+	return nil
 }

@@ -8,7 +8,7 @@ import (
 
 func RegisterRoutes(rg *gin.RouterGroup, h IHandler, cfg *config.Config, permAdapter *middleware.PermissionAdapter) {
 	pl := rg.Group("/pl")
-	pl.Use(middleware.Auth(cfg))
+	pl.Use(middleware.Auth(cfg), middleware.RequireActiveSubscription())
 	pl.GET("/summary", h.GetMonthlySummary)
 	pl.GET("/by-account", h.GetByAccount)
 	pl.GET("/by-responsibility", h.GetByResponsibility)

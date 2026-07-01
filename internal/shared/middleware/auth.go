@@ -91,7 +91,27 @@ func Auth(cfg *config.Config) gin.HandlerFunc {
 		c.Set(util.UserIDKey, claims.Subject)
 		c.Set(util.EntityIDKey, entityUUID)
 		c.Set("role", claims.Role)
+		c.Set(util.SubscriptionStatusKey, claims.SubscriptionStatus)
 
+		c.Next()
+	}
+}
+
+// RequireActiveSubscription blocks practitioner requests when subscription_status is PENDING.
+// Apply this only on business routes — NOT on auth, billing, or subscription routes.
+func RequireActiveSubscription() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		role, _ := c.Get("role")
+		if role != util.RolePractitioner {
+			c.Next()
+			return
+		}
+		status, _ := c.Get(util.SubscriptionStatusKey)
+		if status != util.SubscriptionStatusComplete {
+			response.Error(c, http.StatusPaymentRequired, errors.New("subscription payment required"))
+			c.Abort()
+			return
+		}
 		c.Next()
 	}
 }

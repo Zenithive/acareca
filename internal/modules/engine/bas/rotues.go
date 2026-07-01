@@ -8,7 +8,7 @@ import (
 
 func RegisterRoutes(rg *gin.RouterGroup, h IHandler, cfg *config.Config) {
 	bas := rg.Group("/bas")
-	bas.Use(middleware.Auth(cfg))
+	bas.Use(middleware.Auth(cfg), middleware.RequireActiveSubscription())
 
 	bas.GET("/report", h.GetReport)
 	bas.GET("/bas-preparation", h.GetBASPreparation)

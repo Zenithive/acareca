@@ -8,7 +8,7 @@ import (
 
 func RegisterRoutes(rg *gin.RouterGroup, h IHandler, cfg *config.Config, permAdapter *middleware.PermissionAdapter) {
 	clinic := rg.Group("/clinic")
-	clinic.Use(middleware.Auth(cfg), middleware.AuditContext(), middleware.SetPractitionerIDFromAuth())
+	clinic.Use(middleware.Auth(cfg), middleware.RequireActiveSubscription(), middleware.AuditContext(), middleware.SetPractitionerIDFromAuth())
 
 	// All clinic operations - no permission checks
 	clinic.GET("", h.List)
