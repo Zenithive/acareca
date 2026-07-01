@@ -106,6 +106,12 @@ func (s *service) handleCheckoutCompleted(ctx context.Context, event stripe.Even
 		return err
 	}
 
+	if err := s.subRepo.MarkPractitionerSubscriptionComplete(ctx, practitionerID); err != nil {
+		log.Printf("ERROR: Failed to set subscription_status=COMPLETE for practitioner %s: %v", practitionerID, err)
+	} else {
+		log.Printf("✅ Set subscription_status=COMPLETE for practitioner %s", practitionerID)
+	}
+
 	// LOG SUCCESS AUDIT (Payment Successful)
 	pIDStr := practitionerID.String()
 	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
@@ -194,6 +200,14 @@ func (s *service) handleSubscriptionDeleted(ctx context.Context, event stripe.Ev
 		}
 	}
 
+	if practitionerID != uuid.Nil {
+		if err := s.subRepo.MarkPractitionerSubscriptionPending(ctx, practitionerID); err != nil {
+			log.Printf("ERROR: Failed to set subscription_status=PENDING for practitioner %s: %v", practitionerID, err)
+		} else {
+			log.Printf("✅ Set subscription_status=PENDING for practitioner %s (subscription deleted)", practitionerID)
+		}
+	}
+
 	go s.notifySubscriptionDeletedAlert(practitionerID, stripeSub.ID)
 
 	return nil
@@ -219,26 +233,40 @@ func (s *service) handleSubscriptionUpdated(ctx context.Context, event stripe.Ev
 		return err
 	}
 
+	var practitionerID uuid.UUID
 	var internalSubID int
 	if stripeSub.Metadata != nil {
+		if pracIDStr, ok := stripeSub.Metadata["practitioner_id"]; ok {
+			practitionerID, _ = uuid.Parse(pracIDStr)
+		}
 		if idStr, ok := stripeSub.Metadata["subscription_id"]; ok {
 			internalSubID, _ = strconv.Atoi(idStr)
 		}
 	}
 
-	if stripeSub.Metadata != nil {
-		if pracIDStr, ok := stripeSub.Metadata["practitioner_id"]; ok {
-			if practitionerID, parseErr := uuid.Parse(pracIDStr); parseErr == nil {
-				go s.notifySubscriptionAlert(practitionerID, internalSubID, string(status), time.Now(), endDate)
+	// Update practitioner subscription_status based on the subscription status
+	if practitionerID != uuid.Nil {
+		if status == subscription.StatusActive {
+			if err := s.subRepo.MarkPractitionerSubscriptionComplete(ctx, practitionerID); err != nil {
+				log.Printf("ERROR: Failed to set subscription_status=COMPLETE for practitioner %s: %v", practitionerID, err)
+			} else {
+				log.Printf("✅ Set subscription_status=COMPLETE for practitioner %s", practitionerID)
+			}
+		} else {
+			// If subscription is not active (PAST_DUE, CANCELLED, PAUSED, EXPIRED), set to PENDING
+			if err := s.subRepo.MarkPractitionerSubscriptionPending(ctx, practitionerID); err != nil {
+				log.Printf("ERROR: Failed to set subscription_status=PENDING for practitioner %s: %v", practitionerID, err)
+			} else {
+				log.Printf("✅ Set subscription_status=PENDING for practitioner %s (status: %s)", practitionerID, status)
 			}
 		}
+
+		go s.notifySubscriptionAlert(practitionerID, internalSubID, string(status), time.Now(), endDate)
 	}
 
 	fmt.Printf("\n[DEBUG]Subscription updated notification has been called from Billing\n")
 
 	return nil
-	// periodEnd extracts the current period end from the first subscription item.
-	// In stripe-go v82, current_period_end lives on SubscriptionItem, not Subscription.
 }
 
 func (s *service) notifySubscriptionAlert(practitionerID uuid.UUID, subscriptionPlanID int, status string, activationDate time.Time, endDate time.Time) {
