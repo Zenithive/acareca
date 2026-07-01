@@ -13,7 +13,7 @@ func RegisterRoutes(rg *gin.RouterGroup, h IHandler, cfg *config.Config, permAda
 	rg.GET("/account-taxes/:id", h.GetAccountTax)
 
 	accounts := rg.Group("/chart-of-account")
-	accounts.Use(middleware.Auth(cfg), middleware.AuditContext(), middleware.SetPractitionerIDFromAuth())
+	accounts.Use(middleware.Auth(cfg), middleware.RequireActiveSubscription(), middleware.AuditContext(), middleware.SetPractitionerIDFromAuth())
 	{
 		accounts.GET("", h.ListChartOfAccount)
 		accounts.GET("/:id", h.GetChartOfAccount)

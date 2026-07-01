@@ -28,6 +28,7 @@ type Repository interface {
 	ListExpiringSubscriptions(ctx context.Context, daysBeforeExpiry int) ([]*PractitionerSubscription, error)
 	ListExpiredSubscriptions(ctx context.Context) ([]*PractitionerSubscription, error)
 	MarkAsExpired(ctx context.Context, id int) error
+	MarkPractitionerSubscriptionPending(ctx context.Context, practitionerID uuid.UUID) error
 }
 
 type repository struct {
@@ -322,6 +323,26 @@ func (r *repository) MarkAsExpired(ctx context.Context, id int) error {
 	n, _ := res.RowsAffected()
 	if n == 0 {
 		return ErrNotFound
+	}
+	return nil
+}
+
+// MarkPractitionerSubscriptionPending sets subscription_status = 'PENDING' on tbl_practitioner
+// for the given practitioner. Called when their subscription expires so the middleware
+// blocks their next request with 402 Payment Required.
+func (r *repository) MarkPractitionerSubscriptionPending(ctx context.Context, practitionerID uuid.UUID) error {
+	query := `
+		UPDATE tbl_practitioner
+		SET subscription_status = 'PENDING', updated_at = NOW()
+		WHERE id = $1 AND deleted_at IS NULL
+	`
+	res, err := r.db.ExecContext(ctx, query, practitionerID)
+	if err != nil {
+		return fmt.Errorf("mark practitioner subscription pending: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("practitioner %s not found", practitionerID)
 	}
 	return nil
 }

@@ -83,13 +83,22 @@ func (w *ExpiryWorker) markExpiredSubscriptions(ctx context.Context) error {
 	log.Printf("Found %d expired subscriptions to process", len(expired))
 
 	for _, sub := range expired {
-		// Mark as expired
+		// Mark subscription row as EXPIRED
 		if err := w.repo.MarkAsExpired(ctx, sub.ID); err != nil {
 			log.Printf("ERROR: Failed to mark subscription %d as expired: %v", sub.ID, err)
 			continue
 		}
 
 		log.Printf("✅ Marked subscription %d as EXPIRED for practitioner %s", sub.ID, sub.PractitionerID)
+
+		// Set subscription_status = PENDING on tbl_practitioner so the Auth middleware
+		// returns 402 on the practitioner's next request.
+		if err := w.repo.MarkPractitionerSubscriptionPending(ctx, sub.PractitionerID); err != nil {
+			log.Printf("ERROR: Failed to set subscription_status=PENDING for practitioner %s: %v", sub.PractitionerID, err)
+			// Non-fatal: subscription is already marked EXPIRED, continue with notification
+		} else {
+			log.Printf("✅ Set subscription_status=PENDING for practitioner %s", sub.PractitionerID)
+		}
 
 		// Send expiry notification
 		if err := w.sendExpiryNotification(ctx, sub); err != nil {

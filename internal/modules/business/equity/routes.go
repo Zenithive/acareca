@@ -8,7 +8,7 @@ import (
 
 func RegisterRoutes(rg *gin.RouterGroup, h Handler, cfg *config.Config) {
 	routes := rg.Group("/equity")
-	routes.Use(middleware.Auth(cfg))
+	routes.Use(middleware.Auth(cfg), middleware.RequireActiveSubscription())
 	routes.Use(middleware.SetPractitionerIDFromAuth())
 	{
 		routes.GET("/calculation", h.GetOwnerEquityCalculation)
