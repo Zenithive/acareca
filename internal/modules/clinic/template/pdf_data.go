@@ -174,8 +174,15 @@ func ApplyPDFCollections(data *InvoiceData, items []InvoiceItem, sections []Invo
 		hasFormula := item.Expression != nil && *item.Expression != ""
 		isBold := item.IsFinal || hasFormula
 
+		lowerName := strings.ToLower(strings.TrimSpace(item.Name))
+
+		isTotalServiceFee := strings.Contains(lowerName, "total service & facility fee")
+		isTargetedSection := secType == "CALCULATION_STATEMENT" || secType == "SFA_INVOICE"
+
 		if item.IsFinal && !hasFormula {
 			rowClass = "row-final-balance"
+		} else if item.IsFinal && (!hasFormula || (isTotalServiceFee && isTargetedSection)) {
+			rowClass = "row-total"
 		} else if item.IsFinal && hasFormula {
 			rowClass = "bg-sky-row"
 		}
@@ -191,8 +198,6 @@ func ApplyPDFCollections(data *InvoiceData, items []InvoiceItem, sections []Invo
 				displayLabel = fmt.Sprintf("%s [ %s ]", item.Name, cleanFormula)
 			}
 		}
-
-		lowerName := strings.ToLower(strings.TrimSpace(item.Name))
 
 		if strings.Contains(lowerName, "net balance") {
 			displayLabel = "Net balance [ Total Income - Total Expenses ]"

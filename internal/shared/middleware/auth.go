@@ -91,6 +91,15 @@ func Auth(cfg *config.Config) gin.HandlerFunc {
 		c.Set(util.UserIDKey, claims.Subject)
 		c.Set(util.EntityIDKey, entityUUID)
 		c.Set("role", claims.Role)
+		c.Set(util.SubscriptionStatusKey, claims.SubscriptionStatus)
+
+		// If the token belongs to a practitioner with a PENDING subscription,
+		// reject the request immediately with 402 Payment Required.
+		if claims.Role == util.RolePractitioner && claims.SubscriptionStatus == util.SubscriptionStatusPending {
+			response.Error(c, http.StatusPaymentRequired, errors.New("subscription payment required"))
+			c.Abort()
+			return
+		}
 
 		c.Next()
 	}

@@ -769,12 +769,25 @@ func (s *service) isUserVerified(ctx context.Context, user *User) (bool, error) 
 
 // issueTokens creates access/refresh tokens and persists a new session.
 func (s *service) issueTokens(ctx context.Context, user *User, entityID string) (*RsToken, error) {
-	accessToken, err := util.SignToken(user.ID.String(), entityID, user.Role, 15*time.Hour, s.cfg.JWTSecret)
+	// For practitioners, fetch the current subscription_status to embed in the token.
+	subscriptionStatus := ""
+	if user.Role == util.RolePractitioner {
+		var status string
+		err := s.db.GetContext(ctx, &status,
+			`SELECT subscription_status FROM tbl_practitioner WHERE user_id = $1 AND deleted_at IS NULL`, user.ID)
+		if err != nil {
+			// Non-fatal: default to PENDING so access is denied until confirmed.
+			status = util.SubscriptionStatusPending
+		}
+		subscriptionStatus = status
+	}
+
+	accessToken, err := util.SignToken(user.ID.String(), entityID, user.Role, subscriptionStatus, 15*time.Hour, s.cfg.JWTSecret)
 	if err != nil {
 		return nil, err
 	}
 
-	refreshToken, err := util.SignToken(user.ID.String(), entityID, user.Role, 7*24*time.Hour, s.cfg.JWTSecret)
+	refreshToken, err := util.SignToken(user.ID.String(), entityID, user.Role, subscriptionStatus, 7*24*time.Hour, s.cfg.JWTSecret)
 	if err != nil {
 		return nil, err
 	}
