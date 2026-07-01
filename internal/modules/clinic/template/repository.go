@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"sort"
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/file"
@@ -24,19 +25,15 @@ type IRepository interface {
 	Update(ctx context.Context, t *Template) error
 	Delete(ctx context.Context, id uuid.UUID) error
 	Get(ctx context.Context, id uuid.UUID) (*Template, error)
-	List(ctx context.Context, types []string) (*util.RsList, error)
-	GetSetting(ctx context.Context, templateId uuid.UUID) (*Setting, error)
-	UpdateSetting(ctx context.Context, st *Setting, templateId uuid.UUID) error
+	List(ctx context.Context, method string) (*util.RsList, error)
+	UpdateSetting(ctx context.Context, st *Setting, invoiceId uuid.UUID) error
 	CreateSetting(ctx context.Context, st *Setting) error
-	GetMapping(ctx context.Context, id uuid.UUID) (*Mapping, error)
-	CreateMapping(ctx context.Context, m *Mapping) error
-	UpdateMapping(ctx context.Context, m *Mapping) error
 	GetDocumentByID(ctx context.Context, id uuid.UUID) (*file.Document, error)
 	GetInvoice(ctx context.Context, clinicId uuid.UUID, invoiceId uuid.UUID) (*InvoiceResponse, error)
 	GetInvoiceSectionMeta(ctx context.Context, invoiceId uuid.UUID) ([]InvoiceSectionMeta, error)
 	GetSavedClinicMailTemplate(ctx context.Context, clinicID uuid.UUID) (string, string, error)
 	SaveClinicMailTemplate(ctx context.Context, clinicID uuid.UUID, subject, body string) error
-	GetInvoiceSetting(ctx context.Context, clinicId uuid.UUID, invoiceId uuid.UUID, templateIds []uuid.UUID) (*Setting, error)
+	GetInvoiceSetting(ctx context.Context, invoiceId uuid.UUID) (*Setting, error)
 	ValidateTemplateAccess(ctx context.Context, templateIds []uuid.UUID) error
 }
 
@@ -91,29 +88,60 @@ func (r *Repository) Get(ctx context.Context, id uuid.UUID) (*Template, error) {
 	return &t, nil
 }
 
-func (r *Repository) List(ctx context.Context, types []string) (*util.RsList, error) {
+func (r *Repository) List(ctx context.Context, method string) (*util.RsList, error) {
 	var query string
 	var args []interface{}
 	var err error
 
-	if len(types) > 0 {
+	// Determine template names in their strict presentation order
+	var templateNames []string
+	switch method {
+	case "A":
+		// Page 1: Calculation Statement, Page 2: Tax Invoice, Page 3: Remittance Advice
+		templateNames = []string{"Calculation Statement", "Tax Invoice", "Remittance Advice"}
+	case "B":
+		// Page 1: Calculation Statement, Page 2: Tax Invoice
+		templateNames = []string{"Calculation Statement", "Tax Invoice"}
+	case "C":
+		// Page 1: Calculation Statement, Page 2: RCTI, Page 3: Remittance Advice
+		templateNames = []string{"Calculation Statement", "Recipient Created Tax Invoice", "Remittance Advice"}
+	}
+
+	if len(templateNames) > 0 {
 		query, args, err = sqlx.In(`
 			SELECT id, name, description, html, css, is_default, is_active, created_at, updated_at, deleted_at 
 			FROM tbl_template 
 			WHERE deleted_at IS NULL 
-			  AND name IN (?) 
-			ORDER BY created_at DESC`, types)
+			  AND name IN (?)`, templateNames)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build query: %w", err)
 		}
 		query = r.db.Rebind(query)
 	} else {
-		query = `SELECT id, name, description, html, css, is_default, is_active, created_at, updated_at, deleted_at FROM tbl_template WHERE deleted_at IS NULL ORDER BY created_at DESC`
+		// Fallback: If no method filter, return everything grouped alphabetically
+		query = `
+			SELECT id, name, description, html, css, is_default, is_active, created_at, updated_at, deleted_at 
+			FROM tbl_template 
+			WHERE deleted_at IS NULL 
+			ORDER BY name ASC, created_at DESC`
 	}
 
 	var items []Template
 	if err := r.db.SelectContext(ctx, &items, query, args...); err != nil {
 		return nil, fmt.Errorf("failed to scan templates: %w", err)
+	}
+
+	// If a specific method was chosen, sort the database items to exactly match the templateNames slice order
+	if len(templateNames) > 0 {
+		orderMap := make(map[string]int)
+		for i, name := range templateNames {
+			orderMap[name] = i
+		}
+
+		// Sort the retrieved slice in-place based on our ordered map index positioning
+		sort.Slice(items, func(i, j int) bool {
+			return orderMap[items[i].Name] < orderMap[items[j].Name]
+		})
 	}
 
 	rs := make([]RsTemplate, len(items))
@@ -126,90 +154,72 @@ func (r *Repository) List(ctx context.Context, types []string) (*util.RsList, er
 	return &util.RsList{Items: rs, Total: len(rs)}, nil
 }
 
-func (r *Repository) GetSetting(ctx context.Context, templateId uuid.UUID) (*Setting, error) {
-	const q = `
-		SELECT s.*, m.template_id FROM tbl_template_setting s
-		INNER JOIN tbl_invoice_template_mapping m ON s.id = m.setting_id
-		WHERE m.template_id = $1 
-		  AND m.invoice_id IS NULL 
-		  AND m.clinic_id IS NULL 
-		  AND m.deleted_at IS NULL 
-		  AND s.deleted_at IS NULL 
-		LIMIT 1`
-
+// GetInvoiceSetting looks up an invoice-specific row; if empty or missing, it falls back to the system default row (where invoice_id IS NULL)
+func (r *Repository) GetInvoiceSetting(ctx context.Context, invoiceId uuid.UUID) (*Setting, error) {
 	var st Setting
-	if err := r.db.GetContext(ctx, &st, q, templateId); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
+
+	// Case 1: An invoice ID was provided. Look for explicit custom settings first.
+	if invoiceId != uuid.Nil {
+		const qSpecific = `
+			SELECT 
+				id, invoice_id, primary_color, accent_color, body_font_family, header_font_family, is_logo, logo_id, 
+				terms_text, payment_terms, is_watermark, watermark_text, table_style, created_at, updated_at, deleted_at
+			FROM tbl_template_setting 
+			WHERE invoice_id = $1 
+			  AND deleted_at IS NULL 
+			LIMIT 1;`
+
+		err := r.db.GetContext(ctx, &st, qSpecific, invoiceId)
+		if err == nil {
+			return &st, nil
 		}
-		return nil, err
-	}
-	return &st, nil
-}
-
-func (r *Repository) GetInvoiceSetting(ctx context.Context, clinicId, invoiceId uuid.UUID, templateIds []uuid.UUID) (*Setting, error) {
-	if len(templateIds) == 0 {
-		return nil, fmt.Errorf("at least one template ID is required")
+		if !errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("failed fetching specific invoice setting for id %s: %w", invoiceId, err)
+		}
 	}
 
-	const maxTemplateIds = 10
-	if len(templateIds) > maxTemplateIds {
-		return nil, fmt.Errorf("too many template IDs provided, maximum is %d", maxTemplateIds)
-	}
-
-	const q = `
-		SELECT s.*, m.template_id 
-		FROM tbl_template_setting s
-		INNER JOIN tbl_invoice_template_mapping m ON s.id = m.setting_id
-		WHERE m.template_id = ANY($3)
-		  AND m.deleted_at IS NULL
-		  AND s.deleted_at IS NULL
-		  AND (
-		      (m.clinic_id = $1 AND m.invoice_id = $2)
-		      OR (m.clinic_id IS NULL AND m.invoice_id IS NULL)
-		  )
-		ORDER BY 
-			CASE 
-				WHEN m.clinic_id = $1 AND m.invoice_id = $2 THEN 1
-				ELSE 2
-			END ASC
+	// Case 2: No invoice ID provided OR no specific row was found. Fallback to global defaults.
+	const qDefault = `
+		SELECT 
+			id, invoice_id, primary_color, accent_color, body_font_family, header_font_family, is_logo, logo_id, 
+			terms_text, payment_terms, is_watermark, watermark_text, table_style, created_at, updated_at, deleted_at
+		FROM tbl_template_setting 
+		WHERE invoice_id IS NULL 
+		  AND deleted_at IS NULL 
 		LIMIT 1;`
 
-	var st Setting
-	if err := r.db.GetContext(ctx, &st, q, clinicId, invoiceId, pq.Array(templateIds)); err != nil {
+	if err := r.db.GetContext(ctx, &st, qDefault); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
-		return nil, err
+		return nil, fmt.Errorf("failed fetching fallback global default invoice settings: %w", err)
 	}
+
 	return &st, nil
 }
 
-func (r *Repository) UpdateSetting(ctx context.Context, st *Setting, templateId uuid.UUID) error {
+func (r *Repository) UpdateSetting(ctx context.Context, st *Setting, invoiceId uuid.UUID) error {
 	const q = `
 		INSERT INTO tbl_template_setting (
-			id, mapping_id, primary_color, accent_color, body_font_family, header_font_family,
-			is_logo, logo_id, letterhead_id, footer_id, terms_text, is_watermark, watermark_text, is_tax, table_style, payment_terms
+			id, invoice_id, primary_color, accent_color, body_font_family, header_font_family,
+			is_logo, logo_id, terms_text, payment_terms, is_watermark, watermark_text, table_style
 		) VALUES (
-			:id, :mapping_id, :primary_color, :accent_color, :body_font_family, :header_font_family,
-			:is_logo, :logo_id, :letterhead_id, :footer_id, :terms_text, :is_watermark, :watermark_text, :is_tax, :table_style, :payment_terms
+			:id, :invoice_id, :primary_color, :accent_color, :body_font_family, :header_font_family,
+			:is_logo, :logo_id, :terms_text, :payment_terms, :is_watermark, :watermark_text, :table_style
 		)
 		ON CONFLICT (id) DO UPDATE SET
-			mapping_id         = EXCLUDED.mapping_id,
+			invoice_id         = EXCLUDED.invoice_id,
 			primary_color      = EXCLUDED.primary_color,
 			accent_color       = EXCLUDED.accent_color,
 			body_font_family   = EXCLUDED.body_font_family,
 			header_font_family = EXCLUDED.header_font_family,
 			is_logo            = EXCLUDED.is_logo,
 			logo_id            = EXCLUDED.logo_id,
-			letterhead_id      = EXCLUDED.letterhead_id,
-			footer_id          = EXCLUDED.footer_id,
 			terms_text         = EXCLUDED.terms_text,
+			payment_terms      = EXCLUDED.payment_terms,
 			is_watermark       = EXCLUDED.is_watermark,
 			watermark_text     = EXCLUDED.watermark_text,
-			is_tax             = EXCLUDED.is_tax,
 			table_style        = EXCLUDED.table_style,
-			payment_terms      = EXCLUDED.payment_terms,
 			updated_at         = NOW()
 		RETURNING id, created_at, updated_at`
 
@@ -249,11 +259,11 @@ func (r *Repository) BulkCreate(ctx context.Context, templates []Template) error
 func (r *Repository) CreateSetting(ctx context.Context, st *Setting) error {
 	const q = `
 		INSERT INTO tbl_template_setting (
-			id, mapping_id, primary_color, accent_color, body_font_family, header_font_family,
-			is_logo, logo_id, letterhead_id, footer_id, terms_text, is_watermark, watermark_text, is_tax, table_style, payment_terms
+			id, invoice_id, primary_color, accent_color, body_font_family, header_font_family,
+			is_logo, logo_id, terms_text, payment_terms, is_watermark, watermark_text, table_style
 		) VALUES (
-			:id, :mapping_id, :primary_color, :accent_color, :body_font_family, :header_font_family,
-			:is_logo, :logo_id, :letterhead_id, :footer_id, :terms_text, :is_watermark, :watermark_text, :is_tax, :table_style, :payment_terms
+			:id, :invoice_id, :primary_color, :accent_color, :body_font_family, :header_font_family,
+			:is_logo, :logo_id, :terms_text,:payment_terms, :is_watermark, :watermark_text, :table_style
 		)
 		RETURNING created_at`
 
@@ -267,80 +277,6 @@ func (r *Repository) CreateSetting(ctx context.Context, st *Setting) error {
 		return rows.StructScan(st)
 	}
 	return rows.Err()
-}
-
-func (r *Repository) GetMapping(ctx context.Context, id uuid.UUID) (*Mapping, error) {
-	const q = `
-		SELECT id, clinic_id, invoice_id, template_id, setting_id, created_at, updated_at
-		FROM tbl_invoice_template_mapping
-		WHERE id = $1 
-		LIMIT 1`
-
-	var m Mapping
-	err := r.db.GetContext(ctx, &m, q, id)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("failed locating existing context mapping: %w", err)
-	}
-
-	return &m, nil
-}
-
-func (r *Repository) CreateMapping(ctx context.Context, m *Mapping) error {
-	if m.ID == uuid.Nil {
-		m.ID = uuid.New()
-	}
-
-	const q = `
-		INSERT INTO tbl_invoice_template_mapping (
-			id, invoice_id, template_id, setting_id, clinic_id
-		) VALUES (
-			:id, :invoice_id, :template_id, :setting_id, :clinic_id
-		)
-		RETURNING created_at, updated_at`
-
-	rows, err := r.db.NamedQueryContext(ctx, q, m)
-	if err != nil {
-		return fmt.Errorf("failed to insert invoice template junction mapping: %w", err)
-	}
-	defer rows.Close()
-
-	if rows.Next() {
-		if err := rows.Scan(&m.CreatedAt, &m.UpdatedAt); err != nil {
-			return err
-		}
-	}
-	return rows.Err()
-}
-
-func (r *Repository) UpdateMapping(ctx context.Context, m *Mapping) error {
-	const q = `
-		UPDATE tbl_invoice_template_mapping
-		SET 
-			invoice_id = :invoice_id,
-			template_id = :template_id,
-			setting_id = :setting_id,
-			clinic_id = :clinic_id,
-			updated_at = NOW()
-		WHERE id = :id
-		RETURNING updated_at`
-
-	rows, err := r.db.NamedQueryContext(ctx, q, m)
-	if err != nil {
-		return fmt.Errorf("failed to update invoice template junction mapping: %w", err)
-	}
-	defer rows.Close()
-
-	if rows.Next() {
-		if err := rows.Scan(&m.UpdatedAt); err != nil {
-			return err
-		}
-		return nil
-	}
-
-	return fmt.Errorf("mapping not found for update: %s", m.ID)
 }
 
 func (r *Repository) GetDocumentByID(ctx context.Context, id uuid.UUID) (*file.Document, error) {

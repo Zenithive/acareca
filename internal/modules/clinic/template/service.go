@@ -21,14 +21,13 @@ type IService interface {
 	Update(ctx context.Context, id uuid.UUID, rq RqGlobalTemplate) (*RsTemplate, error)
 	Delete(ctx context.Context, id uuid.UUID) error
 	Get(ctx context.Context, id uuid.UUID) (*RsTemplate, error)
-	List(ctx context.Context, types []string) (*util.RsList, error)
-	GetSetting(ctx context.Context, templateId uuid.UUID) (*RsSetting, error)
-	GetInvoiceSetting(ctx context.Context, clinicId uuid.UUID, invoiceId uuid.UUID, templateId []uuid.UUID) (map[uuid.UUID]*RsSetting, error)
+	List(ctx context.Context, method string) (*util.RsList, error)
+	GetInvoiceSetting(ctx context.Context, invoiceId uuid.UUID) (*RsSetting, error)
 	UpdateSetting(ctx context.Context, rq RqUpdateSetting) (*RsSetting, error)
 	GeneratePDF(ctx context.Context, rq RqGeneratePDF) ([]byte, error)
 	GenerateMultiPDF(ctx context.Context, templateIds []uuid.UUID, data InvoiceData) ([]byte, error)
 	DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateId []uuid.UUID, invoiceId uuid.UUID) ([]byte, string, error)
-	BulkUpdateDefaults(ctx context.Context) error
+	BulkSyncDefaults(ctx context.Context) error
 }
 
 type Service struct {
@@ -72,7 +71,6 @@ func (s *Service) Create(ctx context.Context, rq RqGlobalTemplate) (*RsTemplate,
 	}
 
 	st := DefaultSettings(t.Id)
-	st.MappingId = nil
 	if err := s.repo.CreateSetting(ctx, &st); err != nil {
 		return nil, err
 	}
@@ -132,68 +130,37 @@ func (s *Service) enrichSettingDocuments(ctx context.Context, st *Setting) error
 			st.Logo = logo
 		}
 	}
-	if st.LetterHeadId != nil {
-		lh, err := s.repo.GetDocumentByID(ctx, *st.LetterHeadId)
-		if err == nil && lh != nil {
-			st.LetterHead = lh
-		}
-	}
-	if st.FooterId != nil {
-		f, err := s.repo.GetDocumentByID(ctx, *st.FooterId)
-		if err == nil && f != nil {
-			st.Footer = f
-		}
-	}
 	return nil
 }
 
-// GetSetting retrieves the default template settings
-func (s *Service) GetSetting(ctx context.Context, templateId uuid.UUID) (*RsSetting, error) {
-	st, err := s.repo.GetSetting(ctx, templateId)
+// GetInvoiceSetting retrieves custom settings for an invoice template
+func (s *Service) GetInvoiceSetting(ctx context.Context, invoiceId uuid.UUID) (*RsSetting, error) {
+
+	st, err := s.repo.GetInvoiceSetting(ctx, invoiceId)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to fetch invoice settings: %w", err)
 	}
+
+	// If no configuration exists, fallback to a code-level default settings
 	if st == nil {
-		return nil, fmt.Errorf("global default setting configuration not provisioned for template: %s", templateId)
+		// Use the application default initializer to prevent returning nil pointer panics to the frontend
+		fallbackSetting := DefaultSettings(uuid.New())
+		rs := fallbackSetting.ToRs()
+		return &rs, nil
 	}
 
 	if err := s.enrichSettingDocuments(ctx, st); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed enriching setting documents for template: %w", err)
 	}
 
 	rs := st.ToRs()
+
 	return &rs, nil
-}
-
-// GetInvoiceSetting retrieves custom settings for an invoice template
-func (s *Service) GetInvoiceSetting(ctx context.Context, clinicId uuid.UUID, invoiceId uuid.UUID, templateId []uuid.UUID) (map[uuid.UUID]*RsSetting, error) {
-	result := make(map[uuid.UUID]*RsSetting, len(templateId))
-
-	for _, tId := range templateId {
-		st, err := s.repo.GetInvoiceSetting(ctx, clinicId, invoiceId, []uuid.UUID{tId})
-		if err != nil {
-			return nil, fmt.Errorf("failed looking up configuration hierarchy for template %s: %w", tId, err)
-		}
-		if st == nil {
-			// no setting found for this template — skip rather than fail the whole batch
-			result[tId] = nil
-			continue
-		}
-
-		if err := s.enrichSettingDocuments(ctx, st); err != nil {
-			return nil, fmt.Errorf("failed enriching setting documents for template %s: %w", tId, err)
-		}
-
-		rs := st.ToRs()
-		result[tId] = &rs
-	}
-
-	return result, nil
 }
 
 func (s *Service) UpdateSetting(ctx context.Context, rq RqUpdateSetting) (*RsSetting, error) {
 	st := rq.ToDB()
-	if err := s.repo.UpdateSetting(ctx, &st, rq.TemplateId); err != nil {
+	if err := s.repo.UpdateSetting(ctx, &st, *rq.InvoiceId); err != nil {
 		return nil, err
 	}
 	rs := st.ToRs()
@@ -229,7 +196,6 @@ func (s *Service) BulkCreate(ctx context.Context) (*[]RsTemplate, error) {
 
 	for _, t := range templates {
 		st := DefaultSettings(t.Id)
-		st.MappingId = nil
 		if err := s.repo.CreateSetting(ctx, &st); err != nil {
 			return nil, err
 		}
@@ -249,8 +215,8 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 	return s.repo.Delete(ctx, id)
 }
 
-func (s *Service) List(ctx context.Context, types []string) (*util.RsList, error) {
-	return s.repo.List(ctx, types)
+func (s *Service) List(ctx context.Context, method string) (*util.RsList, error) {
+	return s.repo.List(ctx, method)
 }
 
 func (s *Service) GenerateMultiPDF(ctx context.Context, templateIds []uuid.UUID, data InvoiceData) ([]byte, error) {
@@ -316,7 +282,7 @@ func (s *Service) GeneratePDF(ctx context.Context, rq RqGeneratePDF) ([]byte, er
 		return nil, fmt.Errorf("failed to decrypt css: %w", err)
 	}
 
-	st, err := s.repo.GetSetting(ctx, rq.TemplateId)
+	st, err := s.repo.GetInvoiceSetting(ctx, uuid.Nil)
 	if err != nil {
 		return nil, err
 	}
@@ -330,7 +296,6 @@ func (s *Service) GeneratePDF(ctx context.Context, rq RqGeneratePDF) ([]byte, er
 		rq.Data.AccentColor = st.AccentColor
 		rq.Data.BodyFontFamily = st.BodyFontFamily
 		rq.Data.HeaderFontFamily = st.HeaderFontFamily
-		rq.Data.ShowTax = st.IsTax
 		if st.TableStyle != nil {
 			rq.Data.TableStyleClass = *st.TableStyle
 		}
@@ -367,7 +332,6 @@ func (s *Service) GeneratePDF(ctx context.Context, rq RqGeneratePDF) ([]byte, er
 			"is_logo":            st.IsLogo,
 			"is_watermark":       st.IsWaterMark,
 			"watermark_text":     watermarkText,
-			"is_tax":             st.IsTax,
 			"terms_text":         termsText,
 		}
 	}
@@ -405,7 +369,7 @@ func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateI
 		return nil, "", fmt.Errorf("failed to fetch invoice sections: %w", err)
 	}
 
-	st, err := s.repo.GetInvoiceSetting(ctx, clinicId, invoiceId, templateIds)
+	st, err := s.repo.GetInvoiceSetting(ctx, invoiceId)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to fetch invoice settings: %w", err)
 	}
@@ -584,7 +548,6 @@ func (s *Service) applyInvoiceSettings(data *InvoiceData, st *Setting) {
 	data.AccentColor = st.AccentColor
 	data.BodyFontFamily = st.BodyFontFamily
 	data.HeaderFontFamily = st.HeaderFontFamily
-	data.ShowTax = st.IsTax
 
 	if st.TableStyle != nil {
 		data.TableStyleClass = *st.TableStyle
@@ -635,7 +598,6 @@ func (s *Service) applyInvoiceSettings(data *InvoiceData, st *Setting) {
 	data.TemplateSettings["is_logo"] = st.IsLogo
 	data.TemplateSettings["is_watermark"] = st.IsWaterMark
 	data.TemplateSettings["watermark_text"] = watermark
-	data.TemplateSettings["is_tax"] = st.IsTax
 	data.TemplateSettings["terms_text"] = terms
 
 	if st.TableStyle != nil {
@@ -645,9 +607,9 @@ func (s *Service) applyInvoiceSettings(data *InvoiceData, st *Setting) {
 	}
 }
 
-func (s *Service) BulkUpdateDefaults(ctx context.Context) error {
+func (s *Service) BulkSyncDefaults(ctx context.Context) error {
 	freshTemplates := DefaultTemplates()
-	existingList, err := s.repo.List(ctx, nil)
+	existingList, err := s.repo.List(ctx, "")
 	if err != nil {
 		return fmt.Errorf("failed listing global blueprints: %w", err)
 	}
@@ -692,7 +654,6 @@ func (s *Service) BulkUpdateDefaults(ctx context.Context) error {
 			if err := s.repo.Update(ctx, &t); err != nil {
 				return fmt.Errorf("failed overwriting central design template text context '%s': %w", freshRq.Name, err)
 			}
-
 		} else {
 			t := Template{
 				Name:      freshRq.Name,
@@ -704,31 +665,29 @@ func (s *Service) BulkUpdateDefaults(ctx context.Context) error {
 			if err := s.repo.Create(ctx, &t); err != nil {
 				return fmt.Errorf("failed tracking fresh template layout baseline: %w", err)
 			}
-
-			mappingID := uuid.New()
-			settingID := uuid.New()
-
-			st := DefaultSettings(t.Id)
-			st.Id = settingID
-			st.MappingId = &mappingID
-
-			if err := s.repo.CreateSetting(ctx, &st); err != nil {
-				return fmt.Errorf("failed tracking default options values profiles: %w", err)
-			}
-
-			m := Mapping{
-				ID:         mappingID,
-				InvoiceID:  nil, // Explicitly NULL because it represents a default blueprint configuration
-				TemplateID: t.Id,
-				SettingID:  settingID,
-				ClinicID:   nil, // System-wide global default
-			}
-
-			if err := s.repo.CreateMapping(ctx, &m); err != nil {
-				return fmt.Errorf("failed creating global default mapping linkage: %w", err)
-			}
 		}
 	}
+
+	existingGlobalSetting, err := s.repo.GetInvoiceSetting(ctx, uuid.Nil)
+	if err != nil {
+		return fmt.Errorf("failed to fetch global settings: %w", err)
+	}
+
+	globalSetting := DefaultSettings(uuid.Nil)
+	globalSetting.InvoiceId = nil
+
+	if existingGlobalSetting != nil {
+		// Existing record found: Use its exact ID to force the UPSERT statement conflict path
+		globalSetting.Id = existingGlobalSetting.Id
+	} else {
+		// Truly pristine database: Initialize a fresh tracking identifier
+		globalSetting.Id = uuid.New()
+	}
+
+	if err := s.repo.UpdateSetting(ctx, &globalSetting, uuid.Nil); err != nil {
+		return fmt.Errorf("failed to sync global system fallback invoice settings record: %w", err)
+	}
+
 	return nil
 }
 

@@ -91,21 +91,17 @@ type RsTemplate struct {
 
 type RqUpdateSetting struct {
 	Id               uuid.UUID  `json:"id"`
-	TemplateId       uuid.UUID  `json:"template_id"`
-	MappingId        *uuid.UUID `json:"mapping_id"`
+	InvoiceId        *uuid.UUID `json:"invoice_id"`
 	PrimaryColor     string     `json:"primary_color"`
 	AccentColor      string     `json:"accent_color"`
 	BodyFontFamily   string     `json:"body_font_family"`
 	HeaderFontFamily string     `json:"header_font_family"`
 	IsLogo           bool       `json:"is_logo"`
 	Logo             *uuid.UUID `json:"logo"`
-	LetterHead       *uuid.UUID `json:"letter_head"`
-	Footer           *uuid.UUID `json:"footer"`
 	TermText         *string    `json:"term_text"`
 	PaymentTerms     *string    `json:"payment_terms"`
 	IsWaterMark      bool       `json:"is_water_mark"`
 	WaterMarkText    *string    `json:"water_mark_text"`
-	IsTax            bool       `json:"is_tax"`
 	TableStyle       string     `json:"table_style"`
 }
 
@@ -118,47 +114,37 @@ func (rq *RqUpdateSetting) ToDB() Setting {
 
 	return Setting{
 		Id:               rq.Id,
-		TemplateId:       rq.TemplateId,
-		MappingId:        rq.MappingId,
+		InvoiceId:        rq.InvoiceId,
 		PrimaryColor:     rq.PrimaryColor,
 		AccentColor:      rq.AccentColor,
 		BodyFontFamily:   rq.BodyFontFamily,
 		HeaderFontFamily: rq.HeaderFontFamily,
 		IsLogo:           rq.IsLogo,
 		LogoId:           rq.Logo,
-		LetterHeadId:     rq.LetterHead,
-		FooterId:         rq.Footer,
 		TermText:         rq.TermText,
 		PaymentTerms:     rq.PaymentTerms,
 		IsWaterMark:      rq.IsWaterMark,
 		WaterMarkText:    rq.WaterMarkText,
-		IsTax:            rq.IsTax,
 		TableStyle:       tableStyle,
 	}
 }
 
 type Setting struct {
 	Id               uuid.UUID  `db:"id"`
-	TemplateId       uuid.UUID  `db:"template_id"`
-	MappingId        *uuid.UUID `db:"mapping_id"`
+	InvoiceId        *uuid.UUID `db:"invoice_id"`
 	PrimaryColor     string     `db:"primary_color"`
 	AccentColor      string     `db:"accent_color"`
 	BodyFontFamily   string     `db:"body_font_family"`
 	HeaderFontFamily string     `db:"header_font_family"`
 	IsLogo           bool       `db:"is_logo"`
 	LogoId           *uuid.UUID `db:"logo_id"`
-	LetterHeadId     *uuid.UUID `db:"letterhead_id"`
-	FooterId         *uuid.UUID `db:"footer_id"`
 	TermText         *string    `db:"terms_text"`
 	PaymentTerms     *string    `db:"payment_terms"`
 	IsWaterMark      bool       `db:"is_watermark"`
 	WaterMarkText    *string    `db:"watermark_text"`
-	IsTax            bool       `db:"is_tax"`
 	TableStyle       *string    `db:"table_style"`
 
-	Logo       *file.Document `db:"-"`
-	LetterHead *file.Document `db:"-"`
-	Footer     *file.Document `db:"-"`
+	Logo *file.Document `db:"-"`
 
 	CreatedAt time.Time  `db:"created_at"`
 	UpdatedAt *time.Time `db:"updated_at"`
@@ -171,16 +157,6 @@ func (st *Setting) ToRs() RsSetting {
 		logo = st.Logo.ToRsDocument()
 	}
 
-	var letterhead *file.RsDocument
-	if st.LetterHead != nil {
-		letterhead = st.LetterHead.ToRsDocument()
-	}
-
-	var footer *file.RsDocument
-	if st.Footer != nil {
-		footer = st.Footer.ToRsDocument()
-	}
-
 	tableStyle := ""
 	if st.TableStyle != nil {
 		tableStyle = *st.TableStyle
@@ -188,21 +164,17 @@ func (st *Setting) ToRs() RsSetting {
 
 	return RsSetting{
 		Id:               st.Id,
-		TemplateId:       st.TemplateId,
-		MappingId:        st.MappingId,
+		InvoiceId:        st.InvoiceId,
 		PrimaryColor:     st.PrimaryColor,
 		AccentColor:      st.AccentColor,
 		BodyFontFamily:   st.BodyFontFamily,
 		HeaderFontFamily: st.HeaderFontFamily,
 		IsLogo:           st.IsLogo,
 		Logo:             logo,
-		LetterHead:       letterhead,
-		Footer:           footer,
 		TermText:         st.TermText,
 		PaymentTerms:     st.PaymentTerms,
 		IsWaterMark:      st.IsWaterMark,
 		WaterMarkText:    st.WaterMarkText,
-		IsTax:            st.IsTax,
 		TableStyle:       tableStyle,
 		CreatedAt:        st.CreatedAt,
 		UpdatedAt:        st.UpdatedAt,
@@ -211,21 +183,17 @@ func (st *Setting) ToRs() RsSetting {
 
 type RsSetting struct {
 	Id               uuid.UUID        `json:"id"`
-	TemplateId       uuid.UUID        `json:"template_id"`
-	MappingId        *uuid.UUID       `json:"mapping_id,omitempty"`
+	InvoiceId        *uuid.UUID       `json:"invoice_id,omitempty"`
 	PrimaryColor     string           `json:"primary_color"`
 	AccentColor      string           `json:"accent_color"`
 	BodyFontFamily   string           `json:"body_font_family"`
 	HeaderFontFamily string           `json:"header_font_family"`
 	IsLogo           bool             `json:"is_logo"`
 	Logo             *file.RsDocument `json:"logo"`
-	LetterHead       *file.RsDocument `json:"letter_head"`
-	Footer           *file.RsDocument `json:"footer"`
 	TermText         *string          `json:"term_text"`
 	PaymentTerms     *string          `json:"payment_terms"`
 	IsWaterMark      bool             `json:"is_water_mark"`
 	WaterMarkText    *string          `json:"water_mark_text"`
-	IsTax            bool             `json:"is_tax"`
 	TableStyle       string           `json:"table_style"`
 	CreatedAt        time.Time        `json:"created_at"`
 	UpdatedAt        *time.Time       `json:"updated_at"`
@@ -250,9 +218,6 @@ type InvoiceData struct {
 	LogoInitial          string                 `json:"logo_initial"`
 	WatermarkEnabled     bool                   `json:"watermark_enabled"`
 	WatermarkText        string                 `json:"watermark_text"`
-	ShowTax              bool                   `json:"show_tax"`
-	LetterheadHTML       string                 `json:"letterhead_html"`
-	FooterHTML           string                 `json:"footer_html"`
 	Notes                string                 `json:"notes"`
 	AmountInWords        string                 `json:"amount_in_words"`
 	HasAttachments       bool                   `json:"has_attachments"`
