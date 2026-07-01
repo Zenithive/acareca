@@ -57,11 +57,13 @@ const (
 	// Admin-specific event types
 	EventUserRegistered        EventType = "user.registered"
 	EventPractitionerCreated   EventType = "practitioner.created"
-	EventBillingPaymentSuccess EventType = "billing.payment_success"
-	EventBillingPaymentFailed  EventType = "billing.payment_failed"
-	EventSubscriptionCreated   EventType = "subscription.created"
-	EventSubscriptionUpdated   EventType = "subscription.updated"
-	EventSubscriptionDeleted   EventType = "subscription.deleted"
+	EventBillingPaymentSuccess  EventType = "billing.payment_success"
+	EventBillingPaymentFailed   EventType = "billing.payment_failed"
+	EventSubscriptionCreated    EventType = "subscription.created"
+	EventSubscriptionUpdated    EventType = "subscription.updated"
+	EventSubscriptionDeleted    EventType = "subscription.deleted"
+	EventSubscriptionExpiring   EventType = "subscription.expiring"
+	EventSubscriptionExpired    EventType = "subscription.expired"
 )
 
 type EntityType string
@@ -119,4 +121,5 @@ const (
 	EventBillingAlert          NotificationEventType = "billing.alert"           // payment success/failure
 	EventSubscriptionAlert     NotificationEventType = "subscription.alert"      // subscription created/updated/deleted
 	EventUserRegistrationAlert NotificationEventType = "user.registration.alert" // new practitioner registered
+	EventSubscriptionExpiryAlert NotificationEventType = "subscription.expiry.alert" // subscription expiring/expired alerts
 )

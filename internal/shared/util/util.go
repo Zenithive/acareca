@@ -390,6 +390,8 @@ func MapEventTypeToNotificationEventType(eventType EventType) []NotificationEven
 		return []NotificationEventType{EventBillingAlert}
 	case EventSubscriptionCreated, EventSubscriptionUpdated, EventSubscriptionDeleted:
 		return []NotificationEventType{EventSubscriptionAlert}
+	case EventSubscriptionExpiring, EventSubscriptionExpired:
+		return []NotificationEventType{EventSubscriptionExpiryAlert}
 	case EventUserRegistered, EventPractitionerCreated:
 		return []NotificationEventType{EventUserRegistrationAlert}
 	case EventAuditLogCreated:

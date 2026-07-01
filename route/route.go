@@ -45,7 +45,7 @@ import (
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
-func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEvent) (audit.Service, *sharednotification.Hub, notification.Repository, notification.Service, *worker.Consumer) {
+func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEvent) (audit.Service, *sharednotification.Hub, notification.Repository, notification.Service, *worker.Consumer, *userSubscription.ExpiryWorker) {
 
 	// Initialize Stripe SDK
 	if cfg.StripeSecretKey == "" {
@@ -265,6 +265,10 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 	// ============ BUILDER ROUTES (requires notificationPublisher) ============
 	RegisterBuilderRoutes(v1, cfg, dbConn, clinicSvc, coaSvc, coaRepo, practitionerSvc, accountantRepo, authRepo, auditSvc, invitationSvc, invitationRepo, notificationSvc, adminRepo, authSvc)
 
-	return auditSvc, notifier, notificationRepo, notificationSvc, notificationConsumer
+	// ============ SUBSCRIPTION EXPIRY WORKER ============
+	notificationPublisherForWorker := sharednotification.NewPublisher(notification.NewServiceAdapter(notificationSvc), adminRepo)
+	subscriptionExpiryWorker := userSubscription.NewExpiryWorker(userSubscriptionRepo, notificationPublisherForWorker)
+
+	return auditSvc, notifier, notificationRepo, notificationSvc, notificationConsumer, subscriptionExpiryWorker
 
 }

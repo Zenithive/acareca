@@ -25,6 +25,9 @@ type Repository interface {
 	GetActiveSubscription(ctx context.Context, practitionerID uuid.UUID) (*RsActiveSubscription, error)
 	UpsertFromWebhook(ctx context.Context, s *WebhookUpsert) error
 	UpdateStripeFields(ctx context.Context, stripeSubID string, invoiceID *string, status Status, endDate time.Time) error
+	ListExpiringSubscriptions(ctx context.Context, daysBeforeExpiry int) ([]*PractitionerSubscription, error)
+	ListExpiredSubscriptions(ctx context.Context) ([]*PractitionerSubscription, error)
+	MarkAsExpired(ctx context.Context, id int) error
 }
 
 type repository struct {
@@ -268,4 +271,57 @@ func (r *repository) mapToActiveSubscription(row *dbSubscriptionRow) *RsActiveSu
 			IsVisible:   row.SIsVisible,
 		},
 	}
+}
+
+// ListExpiringSubscriptions returns active subscriptions that will expire within the specified number of days
+func (r *repository) ListExpiringSubscriptions(ctx context.Context, daysBeforeExpiry int) ([]*PractitionerSubscription, error) {
+	query := `
+		SELECT id, practitioner_id, subscription_id, start_date, end_date, status, stripe_subscription_id, stripe_invoice_id, created_at, updated_at, deleted_at
+		FROM tbl_practitioner_subscription
+		WHERE status = 'ACTIVE'
+		  AND deleted_at IS NULL
+		  AND end_date > NOW()
+		  AND end_date <= NOW() + INTERVAL '1 day' * $1
+		ORDER BY end_date ASC
+	`
+	var list []*PractitionerSubscription
+	if err := r.db.SelectContext(ctx, &list, query, daysBeforeExpiry); err != nil {
+		return nil, fmt.Errorf("list expiring subscriptions: %w", err)
+	}
+	return list, nil
+}
+
+// ListExpiredSubscriptions returns subscriptions that have passed their end_date but still have ACTIVE status
+func (r *repository) ListExpiredSubscriptions(ctx context.Context) ([]*PractitionerSubscription, error) {
+	query := `
+		SELECT id, practitioner_id, subscription_id, start_date, end_date, status, stripe_subscription_id, stripe_invoice_id, created_at, updated_at, deleted_at
+		FROM tbl_practitioner_subscription
+		WHERE status = 'ACTIVE'
+		  AND deleted_at IS NULL
+		  AND end_date < NOW()
+		ORDER BY end_date ASC
+	`
+	var list []*PractitionerSubscription
+	if err := r.db.SelectContext(ctx, &list, query); err != nil {
+		return nil, fmt.Errorf("list expired subscriptions: %w", err)
+	}
+	return list, nil
+}
+
+// MarkAsExpired updates a subscription status to EXPIRED
+func (r *repository) MarkAsExpired(ctx context.Context, id int) error {
+	query := `
+		UPDATE tbl_practitioner_subscription
+		SET status = 'EXPIRED', updated_at = NOW()
+		WHERE id = $1 AND deleted_at IS NULL
+	`
+	res, err := r.db.ExecContext(ctx, query, id)
+	if err != nil {
+		return fmt.Errorf("mark subscription as expired: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
