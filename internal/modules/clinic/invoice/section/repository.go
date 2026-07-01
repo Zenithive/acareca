@@ -17,7 +17,6 @@ var (
 	ErrSectionAlreadyExists = errors.New("section already exists for this invoice")
 )
 
-// IRepository defines the contract for section data operations
 type IRepository interface {
 	Create(ctx context.Context, tx *sqlx.Tx, invoiceID uuid.UUID, sections []Section) error
 	Update(ctx context.Context, tx *sqlx.Tx, sections []Section) error

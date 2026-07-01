@@ -1,6 +1,8 @@
 package invoice
 
 import (
+	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -8,6 +10,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/invoice/section"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/item"
 	"github.com/iamarpitzala/acareca/internal/shared/common"
+	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/samber/lo"
 )
 
@@ -20,26 +23,27 @@ type RqInvoice struct {
 	InvoiceFrequency  *string             `json:"invoiceFrequency,omitempty" validate:"omitempty,oneof=DAILY WEEKLY MONTHLY YEARLY"`
 	IssueDate         string              `json:"issueDate" validate:"required"`
 	DueDate           *string             `json:"dueDate,omitempty" validate:"omitempty"`
+	InvoiceMethod     *util.InvoiceType   `json:"invoiceMethod,omitempty" validate:"omitempty,oneof=SFA_CLINIC_COLLECTS SFA_DENTIST_COLLECTS INDEPENDENT_CONTRACTOR"`
 	Status            *string             `json:"status"`
 	Sections          []section.RqSection `json:"sections,omitempty" validate:"omitempty,dive"`
 	Settings          *RqInvoiceSetting   `json:"settings,omitempty"`
 }
 
 type RqInvoiceSetting struct {
-	PrimaryColor     *string `json:"primaryColor,omitempty"`
-	AccentColor      *string `json:"accentColor,omitempty"`
-	BodyFontFamily   *string `json:"bodyFontFamily,omitempty"`
-	HeaderFontFamily *string `json:"headerFontFamily,omitempty"`
-	IsLogo           *bool   `json:"isLogo,omitempty"`
-	LogoID           *string `json:"logoId,omitempty"`
-	LetterheadID     *string `json:"letterheadId,omitempty"`
-	FooterID         *string `json:"footerId,omitempty"`
-	TermsText        *string `json:"termsText,omitempty"`
-	PaymentTerms     *string `json:"paymentTerms,omitempty"`
-	IsWatermark      *bool   `json:"isWatermark,omitempty"`
-	WatermarkText    *string `json:"watermarkText,omitempty"`
-	IsTax            *bool   `json:"isTax,omitempty"`
-	TableStyle       *string `json:"tableStyle,omitempty"`
+	PrimaryColor     *string    `json:"primaryColor,omitempty"`
+	AccentColor      *string    `json:"accentColor,omitempty"`
+	BodyFontFamily   *string    `json:"bodyFontFamily,omitempty"`
+	HeaderFontFamily *string    `json:"headerFontFamily,omitempty"`
+	IsLogo           *bool      `json:"isLogo,omitempty"`
+	LogoID           *uuid.UUID `json:"logoId,omitempty"`
+	LetterheadID     *uuid.UUID `json:"letterheadId,omitempty"`
+	FooterID         *uuid.UUID `json:"footerId,omitempty"`
+	TermsText        *string    `json:"termsText,omitempty"`
+	PaymentTerms     *string    `json:"paymentTerms,omitempty"`
+	IsWatermark      *bool      `json:"isWatermark,omitempty"`
+	WatermarkText    *string    `json:"watermarkText,omitempty"`
+	IsTax            *bool      `json:"isTax,omitempty"`
+	TableStyle       *string    `json:"tableStyle,omitempty"`
 }
 
 func (r *RqInvoice) ToInvoice() *Invoice {
@@ -82,6 +86,7 @@ func (r *RqInvoice) ToInvoice() *Invoice {
 		Status:            status,
 		DueDate:           dueDate,
 		Sections:          sections,
+		InvoiceMethod:     r.InvoiceMethod,
 		Settings:          r.Settings,
 	}
 }
@@ -96,6 +101,7 @@ type RqUpdateInvoice struct {
 	InvoiceFrequency  *string                   `json:"invoiceFrequency,omitempty" validate:"omitempty,oneof=DAILY WEEKLY MONTHLY YEARLY"`
 	IssueDate         *string                   `json:"issueDate,omitempty" validate:"omitempty,datetime=2006-01-02"`
 	DueDate           *string                   `json:"dueDate,omitempty" validate:"omitempty,datetime=2006-01-02"`
+	InvoiceMethod     *util.InvoiceType         `json:"invoiceMethod,omitempty" validate:"omitempty,oneof=SFA_CLINIC_COLLECTS SFA_DENTIST_COLLECTS INDEPENDENT_CONTRACTOR"`
 	Status            *string                   `json:"status,omitempty"`
 	Sections          []section.RqUpdateSection `json:"sections,omitempty" validate:"omitempty,dive"`
 	DeleteSections    []uuid.UUID               `json:"deleteSections,omitempty"`
@@ -227,6 +233,7 @@ type Invoice struct {
 	BillingPeriodFrom *string           `db:"billing_period_from"`
 	BillingPeriodTo   *string           `db:"billing_period_to"`
 	InvoiceFrequency  *string           `db:"invoice_frequency,omitempty"`
+	InvoiceMethod     *util.InvoiceType `db:"invoice_method,omitempty"`
 	IssueDate         time.Time         `db:"issue_date"`
 	DueDate           *time.Time        `db:"due_date,omitempty"`
 	Status            *string           `db:"status"`
@@ -253,6 +260,7 @@ func (i *Invoice) ToRsInvoiceSummary() *RsInvoiceSummary {
 		BillingPeriodFrom: lo.FromPtrOr(i.BillingPeriodFrom, ""),
 		BillingPeriodTo:   lo.FromPtrOr(i.BillingPeriodTo, ""),
 		InvoiceFrequency:  i.InvoiceFrequency,
+		InvoiceMethod:     i.InvoiceMethod,
 		IssueDate:         i.IssueDate,
 		DueDate:           i.DueDate,
 		Status:            i.Status,
@@ -306,6 +314,7 @@ type RsInvoiceSummary struct {
 	ContactID         *uuid.UUID         `json:"contactId,omitempty"`
 	ContactTo         *contact.RsContact `json:"contactTo,omitempty"`
 	Name              string             `json:"name"`
+	InvoiceMethod     *util.InvoiceType  `json:"invoiceMethod,omitempty"`
 	BillingPeriodFrom string             `json:"billingPeriodFrom"`
 	BillingPeriodTo   string             `json:"billingPeriodTo"`
 	InvoiceFrequency  *string            `json:"invoiceFrequency,omitempty"`
@@ -328,6 +337,7 @@ type RsInvoice struct {
 	IssueDate         time.Time           `json:"issueDate"`
 	DueDate           *time.Time          `json:"dueDate,omitempty"`
 	Status            *string             `json:"status"`
+	InvoiceMethod     *util.InvoiceType   `json:"invoiceMethod,omitempty"`
 	Sections          []section.RsSection `json:"sections,omitempty"`
 	CreatedAt         time.Time           `json:"createdAt"`
 	UpdatedAt         *time.Time          `json:"updatedAt"`
@@ -423,4 +433,70 @@ type RsInvoiceMailTemplate struct {
 	Subject  string `json:"mail_subject"`
 	Body     string `json:"mail_body"`
 	IsCustom bool   `json:"is_custom"`
+}
+
+var allowedSectionTypesByInvoiceMethod = map[util.InvoiceType]map[section.SectionType]bool{
+	util.InvoiceTypeSFAClinicCollects: {
+		section.CALCULATIONSTATEMENT: true,
+		section.TAXINVOICE:           true,
+		section.REMITTANCEINVOICE:    true,
+	},
+	util.InvoiceTypeSFADentistCollects: {
+		section.CALCULATIONSTATEMENT: true,
+		section.TAXINVOICE:           true,
+	},
+	util.InvoiceTypeIndependentContractor: {
+		section.CALCULATIONSTATEMENT: true,
+		section.RCTI:                 true,
+		section.REMITTANCEINVOICE:    true,
+	},
+}
+
+func (rq *RqInvoice) Validate() error {
+	if rq.ClinicID == uuid.Nil {
+		return errors.New("clinic ID is required")
+	}
+
+	if rq.InvoiceMethod == nil {
+		return errors.New("invoice method is required")
+	}
+
+	allowed, ok := allowedSectionTypesByInvoiceMethod[*rq.InvoiceMethod]
+	if !ok {
+		return fmt.Errorf("invalid invoice method: %v", *rq.InvoiceMethod)
+	}
+
+	for _, sec := range rq.Sections {
+		if !allowed[sec.SectionType] {
+			return fmt.Errorf("invalid section type %v for invoice method %v", sec.SectionType, *rq.InvoiceMethod)
+		}
+	}
+
+	return nil
+}
+
+func (rq *RqUpdateInvoice) Validate() error {
+	if rq.ClinicID == uuid.Nil {
+		return errors.New("clinic ID is required")
+	}
+
+	if rq.InvoiceMethod == nil {
+		return errors.New("invoice method is required")
+	}
+
+	allowed, ok := allowedSectionTypesByInvoiceMethod[*rq.InvoiceMethod]
+	if !ok {
+		return fmt.Errorf("invalid invoice method: %v", *rq.InvoiceMethod)
+	}
+
+	for _, sec := range rq.Sections {
+		if sec.SectionType == nil {
+			return errors.New("section type is required")
+		}
+		if !allowed[*sec.SectionType] {
+			return fmt.Errorf("invalid section type %v for invoice method %v", sec.SectionType, *rq.InvoiceMethod)
+		}
+	}
+
+	return nil
 }
