@@ -41,10 +41,6 @@ CREATE TABLE IF NOT EXISTS tbl_template_setting (
     deleted_at TIMESTAMPTZ NULL
 );
 
-ALTER TABLE tbl_invoice ADD COLUMN invoice_method VARCHAR(1) NOT NULL DEFAULT 'A';
-
-ALTER TABLE tbl_clinic_contact_person ADD COLUMN role VARCHAR(255) DEFAULT NULL;
-
 -- Guarantees only ONE global system fallback row can exist across the platform
 CREATE UNIQUE INDEX IF NOT EXISTS idx_tpl_setting_global_default
     ON tbl_template_setting((invoice_id IS NULL))
@@ -63,10 +59,6 @@ ALTER TABLE tbl_invoice_item
 
 -- +goose Down
 -- +goose StatementBegin
-
-ALTER TABLE tbl_invoice DROP COLUMN invoice_method;
-
-ALTER TABLE tbl_clinic_contact_person DROP COLUMN role;
 
 ALTER TABLE tbl_invoice_item
     DROP COLUMN IF EXISTS is_final;
