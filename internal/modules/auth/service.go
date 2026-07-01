@@ -77,10 +77,11 @@ type service struct {
 	PreferenceSvc        preference.IService
 	adminSubscriptionSvc adminSubscription.Service
 	userSubscriptionSvc  userSubscription.Service
+	userSubscriptionRepo userSubscription.Repository
 	coaRepo              coa.Repository
 }
 
-func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSvc practitioner.IService, auditSvc audit.Service, invitationSvc invitation.Service, practitionerRepo practitioner.Repository, accountantSvc accountant.IService, adminSvc admin.IService, fileRepo filemod.Repository, preferenceSvc preference.IService, adminSubscriptionSvc adminSubscription.Service, userSubscriptionSvc userSubscription.Service, coaRepo coa.Repository) Service {
+func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSvc practitioner.IService, auditSvc audit.Service, invitationSvc invitation.Service, practitionerRepo practitioner.Repository, accountantSvc accountant.IService, adminSvc admin.IService, fileRepo filemod.Repository, preferenceSvc preference.IService, adminSubscriptionSvc adminSubscription.Service, userSubscriptionSvc userSubscription.Service, userSubscriptionRepo userSubscription.Repository, coaRepo coa.Repository) Service {
 	oauthCfg := &oauth2.Config{
 		ClientID:     cfg.GoogleClientID,
 		ClientSecret: cfg.GoogleClientSecret,
@@ -107,6 +108,7 @@ func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSv
 		PreferenceSvc:        preferenceSvc,
 		adminSubscriptionSvc: adminSubscriptionSvc,
 		userSubscriptionSvc:  userSubscriptionSvc,
+		userSubscriptionRepo: userSubscriptionRepo,
 		coaRepo:              coaRepo,
 	}
 }
@@ -313,6 +315,22 @@ func (s *service) Login(ctx context.Context, req *RqLogin) (*RsToken, error) {
 	entityID, err := s.resolveEntityID(ctx, user)
 	if err != nil {
 		return nil, err
+	}
+
+	if user.Role == util.RolePractitioner {
+		practitionerID, _ := uuid.Parse(entityID)
+		var currentStatus string
+		err := s.db.GetContext(ctx, &currentStatus,
+			`SELECT subscription_status FROM tbl_practitioner WHERE id = $1 AND deleted_at IS NULL`, practitionerID)
+
+		if err == nil && currentStatus == util.SubscriptionStatusPending {
+			activeSub, err := s.userSubscriptionSvc.GetActiveSubscription(ctx, practitionerID)
+			if err == nil && activeSub != nil && activeSub.Status == userSubscription.StatusActive {
+				if updateErr := s.userSubscriptionRepo.MarkPractitionerSubscriptionComplete(ctx, practitionerID); updateErr == nil {
+					log.Printf("✅ Auto-updated subscription_status to COMPLETE for practitioner %s on login", practitionerID)
+				}
+			}
+		}
 	}
 
 	userIDStr := user.ID.String()
