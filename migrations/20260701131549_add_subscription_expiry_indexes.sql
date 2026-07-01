@@ -1,6 +1,11 @@
 -- +goose Up
 -- +goose StatementBegin
 
+CREATE TYPE practitioner_subscription_status AS ENUM ('PENDING', 'COMPLETE');
+
+ALTER TABLE tbl_practitioner
+    ADD COLUMN IF NOT EXISTS subscription_status practitioner_subscription_status NOT NULL DEFAULT 'PENDING';
+
 -- Add unique constraint on stripe_subscription_id for upsert logic
 ALTER TABLE tbl_practitioner_subscription 
 ADD CONSTRAINT uq_stripe_subscription_id UNIQUE (stripe_subscription_id);
@@ -23,5 +28,7 @@ WHERE deleted_at IS NULL;
 DROP INDEX IF EXISTS idx_subscription_active;
 DROP INDEX IF EXISTS idx_subscription_expiry;
 ALTER TABLE tbl_practitioner_subscription DROP CONSTRAINT IF EXISTS uq_stripe_subscription_id;
+ALTER TABLE tbl_practitioner DROP COLUMN IF EXISTS subscription_status;
+DROP TYPE IF EXISTS practitioner_subscription_status;
 
 -- +goose StatementEnd
