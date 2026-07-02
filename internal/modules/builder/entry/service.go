@@ -834,7 +834,6 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 		var rawCredits float64
 		var practitionerID *uuid.UUID
 		var earningsCoaID *uuid.UUID
-		var retainedEarningsCoaID *uuid.UUID
 
 		// Pass 2a: Calculate baseline balances from explicit user input lines
 		for _, ev := range out {
@@ -847,27 +846,16 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 						id := earningsAccount.ID
 						earningsCoaID = &id
 					}
-					retainedEarningsAccount, err := s.coaRepo.GetChartByCodeAndPractitionerID(ctx, 960, *practitionerID, nil)
-					if err == nil && retainedEarningsAccount != nil {
-						id := retainedEarningsAccount.ID
-						retainedEarningsCoaID = &id
-					}
 				}
 			}
 		}
 
 		cleanOut := make([]*FormEntryValue, 0, len(out))
 		var formulaAllocationsTo980 float64
-		var formulaAllocationsTo960 float64
 
 		for _, ev := range out {
 			if ev.CoaID != nil && earningsCoaID != nil && *ev.CoaID == *earningsCoaID && ev.FormFieldID == nil {
 				if ev.Description != nil && *ev.Description == "Current Year Earnings Allocation" {
-					continue
-				}
-			}
-			if ev.CoaID != nil && retainedEarningsCoaID != nil && *ev.CoaID == *retainedEarningsCoaID && ev.FormFieldID == nil {
-				if ev.Description != nil && *ev.Description == "Net Profit Allocation to Retained Earnings" {
 					continue
 				}
 			}
@@ -877,12 +865,6 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 				fieldMeta, err := s.fieldRepo.GetByID(ctx, *ev.FormFieldID)
 				if err == nil && fieldMeta != nil && (fieldMeta.IsFormula || fieldMeta.IsComputed) && ev.NetAmount != nil {
 					formulaAllocationsTo980 += math.Abs(*ev.NetAmount)
-				}
-			}
-			if ev.CoaID != nil && retainedEarningsCoaID != nil && *ev.CoaID == *retainedEarningsCoaID && ev.FormFieldID != nil {
-				fieldMeta, err := s.fieldRepo.GetByID(ctx, *ev.FormFieldID)
-				if err == nil && fieldMeta != nil && (fieldMeta.IsFormula || fieldMeta.IsComputed) && ev.NetAmount != nil {
-					formulaAllocationsTo960 += math.Abs(*ev.NetAmount)
 				}
 			}
 		}
@@ -925,7 +907,7 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 
 		trueNetProfit := s.roundValue(rawCredits - rawDebits)
 
-		// Pass 2b: Inject a balancing entry to Account 980 (Current Year Earnings) if they don't match
+		// Pass 2b: Inject a balancing entry if they don't match
 		if practitionerID != nil && earningsCoaID != nil {
 			balancingAmount := s.roundValue(trueNetProfit - formulaAllocationsTo980)
 
@@ -940,27 +922,6 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 					NetAmount:          &balancingAmount,
 					GstAmount:          nil,
 					GrossAmount:        &balancingAmount,
-					BusinessPercentage: nil,
-					Description:        &desc,
-				})
-			}
-		}
-
-		// Pass 2c: Also inject net profit allocation to Account 960 (Retained Earnings)
-		if practitionerID != nil && retainedEarningsCoaID != nil {
-			netProfitFor960 := s.roundValue(trueNetProfit - formulaAllocationsTo960)
-
-			if math.Abs(netProfitFor960) > 0.01 {
-				desc := "Net Profit Allocation to Retained Earnings"
-
-				out = append(out, &FormEntryValue{
-					ID:                 uuid.New(),
-					EntryID:            entryID,
-					FormFieldID:        nil,
-					CoaID:              retainedEarningsCoaID,
-					NetAmount:          &netProfitFor960,
-					GstAmount:          nil,
-					GrossAmount:        &netProfitFor960,
 					BusinessPercentage: nil,
 					Description:        &desc,
 				})
