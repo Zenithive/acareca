@@ -21,15 +21,18 @@ import (
 
 // HandleWebhook verifies the Stripe webhook signature and processes the event.
 func (s *service) HandleWebhook(ctx context.Context, payload []byte, sigHeader string) error {
+	fmt.Println("===========================================run run")
 	webhookSecret := os.Getenv("STRIPE_WEBHOOK_SECRET")
 
 	event, err := s.stripeClient.ConstructWebhookEvent(payload, sigHeader, webhookSecret)
+	fmt.Println("===========================================run run")
 	if err != nil {
 		log.Printf("webhook signature verification failed: sigHeader=%q secretLen=%d err=%v", sigHeader, len(webhookSecret), err)
 		s.auditSvc.LogSystemIssue(ctx, auditctx.ActionSystemWarning, auditctx.ActionBillingWebhookSigInvalid,
 			err, "", "Stripe", "WEBHOOK", auditctx.ModuleBilling)
 		return ErrInvalidWebhookSignature
 	}
+	fmt.Println("===========================================run run", event.Type)
 
 	switch event.Type {
 	case "checkout.session.completed":
@@ -47,10 +50,12 @@ func (s *service) HandleWebhook(ctx context.Context, payload []byte, sigHeader s
 }
 
 func (s *service) handleCheckoutCompleted(ctx context.Context, event stripe.Event) error {
+	fmt.Println("=======================================================run this")
 	var session stripe.CheckoutSession
 	if err := json.Unmarshal(event.Data.Raw, &session); err != nil {
 		return fmt.Errorf("parse checkout session: %w", err)
 	}
+	fmt.Println("=======================================================run this")
 
 	practitionerIDStr, ok := session.Metadata["practitioner_id"]
 	if !ok {
@@ -60,6 +65,7 @@ func (s *service) handleCheckoutCompleted(ctx context.Context, event stripe.Even
 	if !ok {
 		return fmt.Errorf("missing subscription_id in checkout session metadata")
 	}
+	fmt.Println("=======================================================run this")
 
 	practitionerID, err := uuid.Parse(practitionerIDStr)
 	if err != nil {
@@ -69,6 +75,7 @@ func (s *service) handleCheckoutCompleted(ctx context.Context, event stripe.Even
 	if err != nil {
 		return fmt.Errorf("invalid subscription_id: %w", err)
 	}
+	fmt.Println("=======================================================run this")
 
 	if session.Subscription == nil {
 		return fmt.Errorf("checkout session has no subscription")
@@ -79,6 +86,7 @@ func (s *service) handleCheckoutCompleted(ctx context.Context, event stripe.Even
 	if err != nil {
 		return fmt.Errorf("retrieve stripe subscription: %w", err)
 	}
+	fmt.Println("=======================================================run this")
 
 	var invoiceIDPtr *string
 	if stripeSub.LatestInvoice != nil && stripeSub.LatestInvoice.ID != "" {
@@ -86,6 +94,7 @@ func (s *service) handleCheckoutCompleted(ctx context.Context, event stripe.Even
 		invoiceIDPtr = &id
 	}
 
+	fmt.Println("=======================================================run this")
 	endDate := periodEnd(stripeSub)
 
 	upsert := &subscription.WebhookUpsert{
@@ -111,6 +120,7 @@ func (s *service) handleCheckoutCompleted(ctx context.Context, event stripe.Even
 	} else {
 		log.Printf("✅ Set subscription_status=COMPLETE for practitioner %s", practitionerID)
 	}
+	fmt.Println("=======================================================run this")
 
 	// LOG SUCCESS AUDIT (Payment Successful)
 	pIDStr := practitionerID.String()

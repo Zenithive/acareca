@@ -2,6 +2,7 @@ package billing
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -91,6 +92,7 @@ func (h *Handler) BillingHistory(c *gin.Context) {
 
 // Webhook handles POST /webhooks/stripe (raw body, no JWT)
 func (h *Handler) Webhook(c *gin.Context) {
+	fmt.Println("===========================================run run2222")
 	payload, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
