@@ -468,6 +468,16 @@ func (s *Service) ListTransactions(ctx context.Context, filter TransactionFilter
 		return nil, err
 	}
 
+	// Calculate net profit (retained earnings) per entry_id
+	entryNetProfitMap := s.calculateNetProfitByEntry(ctx, items)
+
+	// Enrich each transaction with retained earnings
+	for i := range items {
+		if netProfit, exists := entryNetProfitMap[items[i].EntryID]; exists {
+			items[i].RetainedEarnings = &netProfit
+		}
+	}
+
 	var rs util.RsList
 	rs.MapToList(items, total, *f.Offset, *f.Limit)
 	return &rs, nil
@@ -1043,6 +1053,134 @@ func roundEntry(v float64) float64 {
 	return float64(int(shifted)) / 100
 }
 
+// calculateNetProfitByEntry calculates net profit (retained earnings) for each entry_id
+// Formula: Sum of Revenue - Sum of Expenses = Net Profit
+func (s *Service) calculateNetProfitByEntry(ctx context.Context, transactions []*RsTransactionRow) map[uuid.UUID]float64 {
+	entryNetProfitMap := make(map[uuid.UUID]float64)
+
+	// Group transactions by entry_id
+	entryTransactions := make(map[uuid.UUID][]*RsTransactionRow)
+	for _, txn := range transactions {
+		entryTransactions[txn.EntryID] = append(entryTransactions[txn.EntryID], txn)
+	}
+
+	// Calculate net profit for each entry
+	for entryID, txns := range entryTransactions {
+		var revenue, expenses float64
+
+		for _, txn := range txns {
+			if txn.NetAmount == nil {
+				continue
+			}
+
+			// Get account type by looking up COA
+			chartAccount, err := s.coaRepo.GetByIDInternal(ctx, txn.CoaID)
+			if err != nil {
+				continue
+			}
+
+			accountType := strings.ToLower(chartAccount.AccountTypeName)
+
+			// Revenue adds to profit
+			if strings.Contains(accountType, "revenue") {
+				revenue += *txn.NetAmount
+			}
+
+			// Expenses and Direct Costs reduce profit
+			if strings.Contains(accountType, "expense") ||
+				strings.Contains(accountType, "direct cost") ||
+				strings.Contains(accountType, "other - itr reporting item") {
+				expenses += *txn.NetAmount
+			}
+		}
+
+		netProfit := revenue - expenses
+		entryNetProfitMap[entryID] = s.roundValue(netProfit)
+	}
+
+	return entryNetProfitMap
+}
+
+// calculateNetProfitForCoaEntries calculates net profit for COA entry details
+func (s *Service) calculateNetProfitForCoaEntries(ctx context.Context, details []*RsCoaEntryDetail) map[uuid.UUID]float64 {
+	entryNetProfitMap := make(map[uuid.UUID]float64)
+
+	// Group details by entry_id
+	entryDetails := make(map[uuid.UUID][]*RsCoaEntryDetail)
+	for _, detail := range details {
+		if detail.EntryID == "" {
+			continue
+		}
+		entryID, err := uuid.Parse(detail.EntryID)
+		if err != nil {
+			continue
+		}
+		entryDetails[entryID] = append(entryDetails[entryID], detail)
+	}
+
+	// Calculate net profit for each entry
+	for entryID, dets := range entryDetails {
+		var revenue, expenses float64
+
+		for _, det := range dets {
+			if det.NetAmount == nil {
+				continue
+			}
+
+			accountType := strings.ToLower(det.AccountType)
+
+			// Revenue adds to profit
+			if strings.Contains(accountType, "revenue") {
+				revenue += *det.NetAmount
+			}
+
+			// Expenses and Direct Costs reduce profit
+			if strings.Contains(accountType, "expense") ||
+				strings.Contains(accountType, "direct cost") ||
+				strings.Contains(accountType, "other - itr reporting item") {
+				expenses += *det.NetAmount
+			}
+		}
+
+		netProfit := revenue - expenses
+		entryNetProfitMap[entryID] = s.roundValue(netProfit)
+	}
+
+	return entryNetProfitMap
+}
+
+// calculateTotalRetainedEarningsForCoa calculates total retained earnings for a COA summary
+// by fetching all details for that COA and summing up unique entry net profits
+func (s *Service) calculateTotalRetainedEarningsForCoa(ctx context.Context, coaEntry *RsCoaEntry, filter TransactionFilter, actorID uuid.UUID, role string) float64 {
+	// coaUUID, err := uuid.Parse(coaEntry.CoaID)
+	// if err != nil {
+	// 	return 0
+	// }
+
+	// Fetch all details for this COA (without pagination to get all results)
+	f := filter.ToCommonFilter()
+	noLimit := 10000 // Large number to get all results
+	f.Limit = &noLimit
+	zero := 0
+	f.Offset = &zero
+
+	details, err := s.repo.ListCoaEntryDetails(ctx, coaEntry.CoaName, f, actorID, role)
+	if err != nil {
+		return 0
+	}
+
+	// Calculate net profit per entry
+	entryNetProfitMap := s.calculateNetProfitForCoaEntries(ctx, details)
+
+	// Sum all unique entry net profits
+	var totalRetainedEarnings float64
+	for _, netProfit := range entryNetProfitMap {
+		totalRetainedEarnings += netProfit
+	}
+
+	return s.roundValue(totalRetainedEarnings)
+}
+
 func (s *Service) ListCoaEntries(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string, userID uuid.UUID) (*util.RsList, error) {
 	var userIDStr string
 	userIDStr = userID.String()
@@ -1084,6 +1222,11 @@ func (s *Service) ListCoaEntries(ctx context.Context, filter TransactionFilter, 
 		return nil, err
 	}
 
+	// Calculate total retained earnings for each COA entry
+	for i := range items {
+		items[i].TotalRetainedEarnings = s.calculateTotalRetainedEarningsForCoa(ctx, items[i], filter, actorID, role)
+	}
+
 	var rs util.RsList
 	rs.MapToList(items, total, incomingPageIndex, pageSize)
 	return &rs, nil
@@ -1122,6 +1265,20 @@ func (s *Service) ListCoaEntryDetails(ctx context.Context, coaID string, filter 
 	total, err := s.repo.CountCoaEntryDetails(ctx, coaName, f, actorID, role)
 	if err != nil {
 		return nil, err
+	}
+
+	// Calculate net profit (retained earnings) per entry_id
+	entryNetProfitMap := s.calculateNetProfitForCoaEntries(ctx, items)
+
+	// Enrich each COA entry detail with retained earnings
+	for i := range items {
+		if entryIDStr := items[i].EntryID; entryIDStr != "" {
+			if entryID, parseErr := uuid.Parse(entryIDStr); parseErr == nil {
+				if netProfit, exists := entryNetProfitMap[entryID]; exists {
+					items[i].RetainedEarnings = &netProfit
+				}
+			}
+		}
 	}
 
 	var rs util.RsList
