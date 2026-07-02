@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"reflect"
 	"strings"
 	"time"
 
@@ -658,22 +657,21 @@ func (r *Repository) ListCoaEntries(ctx context.Context, f common.Filter, actorI
 	if len(targetPracIDs) > 0 {
 		plFilter := &pl.PLReportFilter{}
 
-		// Unpack reflect interface values securely
-		vStruct := reflect.Indirect(reflect.ValueOf(f))
-		if vStruct.IsValid() && vStruct.Kind() == reflect.Struct {
-			if fv := vStruct.FieldByName("DateFrom"); fv.IsValid() && !fv.IsZero() {
-				if p, ok := fv.Interface().(*string); ok {
-					plFilter.DateFrom = p
+		// Extract date filters from Where conditions
+		for _, cond := range f.Where {
+			switch cond.Field {
+			case "start_date":
+				if dateStr, ok := cond.Value.(string); ok {
+					plFilter.DateFrom = &dateStr
 				}
-			}
-			if fv := vStruct.FieldByName("DateUntil"); fv.IsValid() && !fv.IsZero() {
-				if p, ok := fv.Interface().(*string); ok {
-					plFilter.DateUntil = p
+			case "end_date":
+				if dateStr, ok := cond.Value.(string); ok {
+					plFilter.DateUntil = &dateStr
 				}
-			}
-			if fv := vStruct.FieldByName("ClinicID"); fv.IsValid() && !fv.IsZero() {
-				if p, ok := fv.Interface().(*string); ok {
-					plFilter.ClinicID = p
+			case "clinic_id":
+				if clinicUUID, ok := cond.Value.(uuid.UUID); ok {
+					clinicStr := clinicUUID.String()
+					plFilter.ClinicID = &clinicStr
 				}
 			}
 		}
@@ -795,21 +793,22 @@ func (r *Repository) CountCoaEntries(ctx context.Context, f common.Filter, actor
 
 	if len(targetPracIDs) > 0 {
 		plFilter := &pl.PLReportFilter{}
-		vStruct := reflect.Indirect(reflect.ValueOf(f))
-		if vStruct.IsValid() && vStruct.Kind() == reflect.Struct {
-			if fv := vStruct.FieldByName("DateFrom"); fv.IsValid() && !fv.IsZero() {
-				if p, ok := fv.Interface().(*string); ok {
-					plFilter.DateFrom = p
+		
+		// Extract date filters from Where conditions
+		for _, cond := range f.Where {
+			switch cond.Field {
+			case "start_date":
+				if dateStr, ok := cond.Value.(string); ok {
+					plFilter.DateFrom = &dateStr
 				}
-			}
-			if fv := vStruct.FieldByName("DateUntil"); fv.IsValid() && !fv.IsZero() {
-				if p, ok := fv.Interface().(*string); ok {
-					plFilter.DateUntil = p
+			case "end_date":
+				if dateStr, ok := cond.Value.(string); ok {
+					plFilter.DateUntil = &dateStr
 				}
-			}
-			if fv := vStruct.FieldByName("ClinicID"); fv.IsValid() && !fv.IsZero() {
-				if p, ok := fv.Interface().(*string); ok {
-					plFilter.ClinicID = p
+			case "clinic_id":
+				if clinicUUID, ok := cond.Value.(uuid.UUID); ok {
+					clinicStr := clinicUUID.String()
+					plFilter.ClinicID = &clinicStr
 				}
 			}
 		}
@@ -1033,21 +1032,22 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 		}
 
 		plFilter := &pl.PLReportFilter{}
-		vStruct := reflect.Indirect(reflect.ValueOf(f))
-		if vStruct.IsValid() && vStruct.Kind() == reflect.Struct {
-			if fv := vStruct.FieldByName("DateFrom"); fv.IsValid() && !fv.IsZero() {
-				if p, ok := fv.Interface().(*string); ok {
-					plFilter.DateFrom = p
+		
+		// Extract date filters from Where conditions
+		for _, cond := range f.Where {
+			switch cond.Field {
+			case "start_date":
+				if dateStr, ok := cond.Value.(string); ok {
+					plFilter.DateFrom = &dateStr
 				}
-			}
-			if fv := vStruct.FieldByName("DateUntil"); fv.IsValid() && !fv.IsZero() {
-				if p, ok := fv.Interface().(*string); ok {
-					plFilter.DateUntil = p
+			case "end_date":
+				if dateStr, ok := cond.Value.(string); ok {
+					plFilter.DateUntil = &dateStr
 				}
-			}
-			if fv := vStruct.FieldByName("ClinicID"); fv.IsValid() && !fv.IsZero() {
-				if p, ok := fv.Interface().(*string); ok {
-					plFilter.ClinicID = p
+			case "clinic_id":
+				if clinicUUID, ok := cond.Value.(uuid.UUID); ok {
+					clinicStr := clinicUUID.String()
+					plFilter.ClinicID = &clinicStr
 				}
 			}
 		}
@@ -1151,21 +1151,22 @@ func (r *Repository) CountCoaEntryDetails(ctx context.Context, coaName string, f
 
 		if len(targetPracIDs) > 0 {
 			plFilter := &pl.PLReportFilter{}
-			vStruct := reflect.Indirect(reflect.ValueOf(f))
-			if vStruct.IsValid() && vStruct.Kind() == reflect.Struct {
-				if fv := vStruct.FieldByName("DateFrom"); fv.IsValid() && !fv.IsZero() {
-					if p, ok := fv.Interface().(*string); ok {
-						plFilter.DateFrom = p
+			
+			// Extract date filters from Where conditions
+			for _, cond := range f.Where {
+				switch cond.Field {
+				case "start_date":
+					if dateStr, ok := cond.Value.(string); ok {
+						plFilter.DateFrom = &dateStr
 					}
-				}
-				if fv := vStruct.FieldByName("DateUntil"); fv.IsValid() && !fv.IsZero() {
-					if p, ok := fv.Interface().(*string); ok {
-						plFilter.DateUntil = p
+				case "end_date":
+					if dateStr, ok := cond.Value.(string); ok {
+						plFilter.DateUntil = &dateStr
 					}
-				}
-				if fv := vStruct.FieldByName("ClinicID"); fv.IsValid() && !fv.IsZero() {
-					if p, ok := fv.Interface().(*string); ok {
-						plFilter.ClinicID = p
+				case "clinic_id":
+					if clinicUUID, ok := cond.Value.(uuid.UUID); ok {
+						clinicStr := clinicUUID.String()
+						plFilter.ClinicID = &clinicStr
 					}
 				}
 			}
