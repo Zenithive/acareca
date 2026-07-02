@@ -41,6 +41,8 @@ type RqSection struct {
 	PaymentDate      *string         `json:"paymentDate"`
 	PaymentReference *string         `json:"paymentReference,omitempty"`
 	Entries          []*item.RqEntry `json:"entries,omitempty" validate:"omitempty,dive"`
+	Sections         []*RqSection    `json:"sections,omitempty" validate:"omitempty,dive"`
+	ParentSectionID  *uuid.UUID      `json:"parentSectionId,omitempty"`
 }
 
 // RqUpdateSection represents the request payload for updating a section
@@ -59,6 +61,8 @@ type RqUpdateSection struct {
 	PaymentReference *string               `json:"paymentReference,omitempty"`
 	Entries          []*item.RqUpdateEntry `json:"entries,omitempty" validate:"omitempty,dive"`
 	DeleteEntries    []uuid.UUID           `json:"deleteEntries,omitempty"`
+	Sections         []*RqUpdateSection    `json:"sections,omitempty" validate:"omitempty,dive"`
+	ParentSectionID  *uuid.UUID            `json:"parentSectionId,omitempty"`
 }
 
 // ToSection converts request to domain model
@@ -68,8 +72,16 @@ func (rq *RqSection) ToSection() *Section {
 		entries = append(entries, entry.ToItem())
 	}
 
+	sectionID := uuid.New()
+	sections := make([]*Section, 0, len(rq.Sections))
+	for _, childSec := range rq.Sections {
+		childSection := childSec.ToSection()
+		childSection.ParentSectionID = &sectionID
+		sections = append(sections, childSection)
+	}
+
 	return &Section{
-		ID:               uuid.New(),
+		ID:               sectionID,
 		InvoiceID:        rq.InvoiceID,
 		TemplateID:       rq.TemplateID,
 		InvoiceSection:   rq.SectionType,
@@ -82,6 +94,8 @@ func (rq *RqSection) ToSection() *Section {
 		PaymentDate:      rq.PaymentDate,
 		PaymentReference: rq.PaymentReference,
 		Entries:          entries,
+		Sections:         sections,
+		ParentSectionID:  rq.ParentSectionID,
 	}
 }
 
@@ -139,6 +153,10 @@ func (rq *RqUpdateSection) ToSection() *Section {
 		section.PaymentReference = rq.PaymentReference
 	}
 
+	if rq.ParentSectionID != nil {
+		section.ParentSectionID = rq.ParentSectionID
+	}
+
 	if rq.Entries != nil {
 		entries := make([]*item.Item, 0, len(rq.Entries))
 		for _, entryUpdate := range rq.Entries {
@@ -159,6 +177,16 @@ func (rq *RqUpdateSection) ToSection() *Section {
 		section.Entries = entries
 	}
 
+	if rq.Sections != nil {
+		sections := make([]*Section, 0, len(rq.Sections))
+		for _, childSecUpdate := range rq.Sections {
+			childSection := childSecUpdate.ToSection()
+			childSection.ParentSectionID = &section.ID
+			sections = append(sections, childSection)
+		}
+		section.Sections = sections
+	}
+
 	return section
 }
 
@@ -177,6 +205,8 @@ type Section struct {
 	PaymentDate      *string      `db:"payment_date"`
 	PaymentReference *string      `db:"payment_reference"`
 	Entries          []*item.Item `db:"-"`
+	Sections         []*Section   `db:"-"`
+	ParentSectionID  *uuid.UUID   `db:"parent_section_id"`
 	CreatedAt        time.Time    `db:"created_at"`
 	UpdatedAt        *time.Time   `db:"updated_at"`
 	DeletedAt        *time.Time   `db:"deleted_at"`
@@ -187,6 +217,11 @@ func (s *Section) ToRsSection() *RsSection {
 	rsEntries := make([]*item.RsEntry, 0, len(s.Entries))
 	for _, entry := range s.Entries {
 		rsEntries = append(rsEntries, entry.ToRsEntry())
+	}
+
+	rsSections := make([]*RsSection, 0, len(s.Sections))
+	for _, childSec := range s.Sections {
+		rsSections = append(rsSections, childSec.ToRsSection())
 	}
 
 	return &RsSection{
@@ -203,6 +238,8 @@ func (s *Section) ToRsSection() *RsSection {
 		PaymentDate:      s.PaymentDate,
 		PaymentReference: s.PaymentReference,
 		Entries:          rsEntries,
+		Sections:         rsSections,
+		ParentSectionID:  s.ParentSectionID,
 		CreatedAt:        s.CreatedAt,
 		UpdatedAt:        s.UpdatedAt,
 	}
@@ -223,6 +260,8 @@ type RsSection struct {
 	PaymentDate      *string         `json:"paymentDate,omitempty"`
 	PaymentReference *string         `json:"paymentReference,omitempty"`
 	Entries          []*item.RsEntry `json:"entries"`
+	Sections         []*RsSection    `json:"sections,omitempty"`
+	ParentSectionID  *uuid.UUID      `json:"parentSectionId,omitempty"`
 	CreatedAt        time.Time       `json:"createdAt"`
 	UpdatedAt        *time.Time      `json:"updatedAt"`
 }
