@@ -152,7 +152,7 @@ func (h *Handler) Get(c *gin.Context) {
 // @Description  Gathers pagination index tracking active engine documents matching invoice methods
 // @Tags         Templates
 // @Produce      json
-// @Param        method  query     string  false  "Filter by invoicing method (A, B, or C)"
+// @Param        method  query     string  false  "Filter by invoice method : SFA_CLINIC_COLLECTS(A), SFA_DENTIST_COLLECTS(B) or INDEPENDENT_CONTRACTOR(C)"
 // @Success      200  {object}  util.RsList "Collection index values mapped to the configuration array"
 // @Failure      500  {object}  map[string]string "Internal Server Error"
 // @Security BearerToken

@@ -2530,6 +2530,13 @@ definitions:
         - MONTHLY
         - YEARLY
         type: string
+      invoiceMethod:
+        allOf:
+        - $ref: '#/definitions/util.InvoiceType'
+        enum:
+        - SFA_CLINIC_COLLECTS
+        - SFA_DENTIST_COLLECTS
+        - INDEPENDENT_CONTRACTOR
       issueDate:
         type: string
       name:
@@ -2611,6 +2618,13 @@ definitions:
         - MONTHLY
         - YEARLY
         type: string
+      invoiceMethod:
+        allOf:
+        - $ref: '#/definitions/util.InvoiceType'
+        enum:
+        - SFA_CLINIC_COLLECTS
+        - SFA_DENTIST_COLLECTS
+        - INDEPENDENT_CONTRACTOR
       issueDate:
         type: string
       name:
@@ -2644,6 +2658,8 @@ definitions:
         type: string
       invoiceFrequency:
         type: string
+      invoiceMethod:
+        $ref: '#/definitions/util.InvoiceType'
       issueDate:
         type: string
       name:
@@ -2949,12 +2965,7 @@ definitions:
       paymentReference:
         type: string
       sectionType:
-        allOf:
-        - $ref: '#/definitions/section.SectionType'
-        enum:
-        - CALCULATION_STATEMENT
-        - SFA_INVOICE
-        - REMITTANCE_INVOICE
+        $ref: '#/definitions/section.SectionType'
       taxMethod:
         allOf:
         - $ref: '#/definitions/section.TaxMethod'
@@ -2966,17 +2977,11 @@ definitions:
         type: string
     required:
     - documentNumber
-    - sectionType
     type: object
   section.RqUpdateSection:
     properties:
       SectionType:
-        allOf:
-        - $ref: '#/definitions/section.SectionType'
-        enum:
-        - CALCULATION_STATEMENT
-        - SFA_INVOICE
-        - REMITTANCE_INVOICE
+        $ref: '#/definitions/section.SectionType'
       accountName:
         type: string
       accountNumber:
@@ -3051,13 +3056,15 @@ definitions:
   section.SectionType:
     enum:
     - CALCULATION_STATEMENT
-    - SFA_INVOICE
-    - REMITTANCE_INVOICE
+    - TAX_INVOICE
+    - REMITTANCE_ADVICE
+    - RCTI
     type: string
     x-enum-varnames:
     - CALCULATIONSTATEMENT
-    - SFAINVOICE
+    - TAXINVOICE
     - REMITTANCEINVOICE
+    - RCTI
   section.TaxMethod:
     enum:
     - NO_TAX
@@ -3488,6 +3495,16 @@ definitions:
     - ChannelInApp
     - ChannelPush
     - ChannelEmail
+  util.InvoiceType:
+    enum:
+    - SFA_CLINIC_COLLECTS
+    - SFA_DENTIST_COLLECTS
+    - INDEPENDENT_CONTRACTOR
+    type: string
+    x-enum-varnames:
+    - InvoiceTypeSFAClinicCollects
+    - InvoiceTypeSFADentistCollects
+    - InvoiceTypeIndependentContractor
   util.NotificationEventType:
     enum:
     - new.transaction
@@ -10380,7 +10397,8 @@ paths:
       description: Gathers pagination index tracking active engine documents matching
         invoice methods
       parameters:
-      - description: Filter by invoicing method (A, B, or C)
+      - description: 'Filter by invoice method : SFA_CLINIC_COLLECTS(A), SFA_DENTIST_COLLECTS(B)
+          or INDEPENDENT_CONTRACTOR(C)'
         in: query
         name: method
         type: string

@@ -96,14 +96,14 @@ func (r *Repository) List(ctx context.Context, method string) (*util.RsList, err
 	// Determine template names in their strict presentation order
 	var templateNames []string
 	switch method {
-	case "A":
-		// Page 1: Calculation Statement, Page 2: Tax Invoice, Page 3: Remittance Advice
+	case "SFA_CLINIC_COLLECTS":
+		// Method A - Page 1: Calculation Statement, Page 2: Tax Invoice, Page 3: Remittance Advice
 		templateNames = []string{"Calculation Statement", "Tax Invoice", "Remittance Advice"}
-	case "B":
-		// Page 1: Calculation Statement, Page 2: Tax Invoice
+	case "SFA_DENTIST_COLLECTS":
+		// Method B - Page 1: Calculation Statement, Page 2: Tax Invoice
 		templateNames = []string{"Calculation Statement", "Tax Invoice"}
-	case "C":
-		// Page 1: Calculation Statement, Page 2: RCTI, Page 3: Remittance Advice
+	case "INDEPENDENT_CONTRACTOR":
+		// Method C - Page 1: Calculation Statement, Page 2: RCTI, Page 3: Remittance Advice
 		templateNames = []string{"Calculation Statement", "Recipient Created Tax Invoice", "Remittance Advice"}
 	}
 

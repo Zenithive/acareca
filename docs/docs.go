@@ -10618,7 +10618,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Filter by invoicing method (A, B, or C)",
+                        "description": "Filter by invoice method : SFA_CLINIC_COLLECTS(A), SFA_DENTIST_COLLECTS(B) or INDEPENDENT_CONTRACTOR(C)",
                         "name": "method",
                         "in": "query"
                     }
@@ -14943,6 +14943,18 @@ const docTemplate = `{
                         "YEARLY"
                     ]
                 },
+                "invoiceMethod": {
+                    "enum": [
+                        "SFA_CLINIC_COLLECTS",
+                        "SFA_DENTIST_COLLECTS",
+                        "INDEPENDENT_CONTRACTOR"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/util.InvoiceType"
+                        }
+                    ]
+                },
                 "issueDate": {
                     "type": "string"
                 },
@@ -15055,6 +15067,18 @@ const docTemplate = `{
                         "YEARLY"
                     ]
                 },
+                "invoiceMethod": {
+                    "enum": [
+                        "SFA_CLINIC_COLLECTS",
+                        "SFA_DENTIST_COLLECTS",
+                        "INDEPENDENT_CONTRACTOR"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/util.InvoiceType"
+                        }
+                    ]
+                },
                 "issueDate": {
                     "type": "string"
                 },
@@ -15104,6 +15128,9 @@ const docTemplate = `{
                 },
                 "invoiceFrequency": {
                     "type": "string"
+                },
+                "invoiceMethod": {
+                    "$ref": "#/definitions/util.InvoiceType"
                 },
                 "issueDate": {
                     "type": "string"
@@ -15530,8 +15557,7 @@ const docTemplate = `{
         "section.RqSection": {
             "type": "object",
             "required": [
-                "documentNumber",
-                "sectionType"
+                "documentNumber"
             ],
             "properties": {
                 "accountName": {
@@ -15565,16 +15591,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "sectionType": {
-                    "enum": [
-                        "CALCULATION_STATEMENT",
-                        "SFA_INVOICE",
-                        "REMITTANCE_INVOICE"
-                    ],
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/section.SectionType"
-                        }
-                    ]
+                    "$ref": "#/definitions/section.SectionType"
                 },
                 "taxMethod": {
                     "enum": [
@@ -15597,16 +15614,7 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "SectionType": {
-                    "enum": [
-                        "CALCULATION_STATEMENT",
-                        "SFA_INVOICE",
-                        "REMITTANCE_INVOICE"
-                    ],
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/section.SectionType"
-                        }
-                    ]
+                    "$ref": "#/definitions/section.SectionType"
                 },
                 "accountName": {
                     "type": "string"
@@ -15721,13 +15729,15 @@ const docTemplate = `{
             "type": "string",
             "enum": [
                 "CALCULATION_STATEMENT",
-                "SFA_INVOICE",
-                "REMITTANCE_INVOICE"
+                "TAX_INVOICE",
+                "REMITTANCE_ADVICE",
+                "RCTI"
             ],
             "x-enum-varnames": [
                 "CALCULATIONSTATEMENT",
-                "SFAINVOICE",
-                "REMITTANCEINVOICE"
+                "TAXINVOICE",
+                "REMITTANCEINVOICE",
+                "RCTI"
             ]
         },
         "section.TaxMethod": {
@@ -16359,6 +16369,19 @@ const docTemplate = `{
                 "ChannelInApp",
                 "ChannelPush",
                 "ChannelEmail"
+            ]
+        },
+        "util.InvoiceType": {
+            "type": "string",
+            "enum": [
+                "SFA_CLINIC_COLLECTS",
+                "SFA_DENTIST_COLLECTS",
+                "INDEPENDENT_CONTRACTOR"
+            ],
+            "x-enum-varnames": [
+                "InvoiceTypeSFAClinicCollects",
+                "InvoiceTypeSFADentistCollects",
+                "InvoiceTypeIndependentContractor"
             ]
         },
         "util.NotificationEventType": {
