@@ -1198,10 +1198,10 @@ func (s *Service) calculateNetProfitForCoaEntries(ctx context.Context, details [
 // calculateTotalRetainedEarningsForCoa calculates total retained earnings for a COA summary
 // by fetching all details for that COA and summing up unique entry net profits
 func (s *Service) calculateTotalRetainedEarningsForCoa(ctx context.Context, coaEntry *RsCoaEntry, filter TransactionFilter, actorID uuid.UUID, role string) float64 {
-	coaUUID, err := uuid.Parse(coaEntry.CoaID)
-	if err != nil {
-		return 0
-	}
+	// coaUUID, err := uuid.Parse(coaEntry.CoaID)
+	// if err != nil {
+	// 	return 0
+	// }
 
 	// Fetch all details for this COA (without pagination to get all results)
 	f := filter.ToCommonFilter()
