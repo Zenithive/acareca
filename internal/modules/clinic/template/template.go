@@ -72,18 +72,16 @@ func sharedCSS() string {
 
 :root { 
   --primary-color: {{#if template_settings.primary_color}}{{template_settings.primary_color}}{{else}}#1f4e5f{{/if}}; 
-  --accent-color: {{#if template_settings.accent_color}}{{template_settings.accent_color}}{{else}}#1f4e5f{{/if}};
-  --bg-input-blue: #e8f1f5; 
-  --bg-darker-blue: #d4e5ee;
+  --accent-color: {{#if template_settings.accent_color}}{{template_settings.accent_color}}{{else}}#5f96b4{{/if}};
   --text-dark: #000000;
   --pos-green: #007a3d;
-  --bright-blue: #0000FF;
+  --neg-red: #c50505;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body { 
-  font-family: {{#if template_settings.body_font_family}}'{{template_settings.body_font_family}}'{{else}}'Arial'{{/if}}, sans-serif; 
+  font-family: {{#if template_settings.body_font_family_css}}'{{template_settings.body_font_family_css}}'{{else}}{{#if template_settings.body_font_family}}'{{template_settings.body_font_family}}'{{else}}'Arial'{{/if}}{{/if}}, sans-serif; 
   font-size: 11px; 
   color: var(--text-dark); 
   background: #ffffff; 
@@ -107,7 +105,6 @@ body {
   page-break-after: avoid;
 }
 
-/* Background watermark styling driven cleanly by frontend toggle context */
 {{#if template_settings.is_watermark}}
 .invoice-page::before {
   content: "{{#if template_settings.watermark_text}}{{template_settings.watermark_text}}{{else}}PAID{{/if}}";
@@ -138,7 +135,7 @@ body {
 }
 
 .hdr-clinic-name { 
-  font-family: {{#if template_settings.header_font_family}}'{{template_settings.header_font_family}}'{{else}}'Arial'{{/if}}, sans-serif;
+  font-family: {{#if template_settings.header_font_family_css}}'{{template_settings.header_font_family_css}}'{{else}}{{#if template_settings.header_font_family}}'{{template_settings.header_font_family}}'{{else}}'Arial'{{/if}}{{/if}}, sans-serif;
   font-size: 16px; 
   font-weight: bold; 
   color: var(--primary-color); 
@@ -158,7 +155,7 @@ body {
 }
 
 .hdr-doc-title { 
-  font-family: {{#if template_settings.header_font_family}}'{{template_settings.header_font_family}}'{{else}}'Arial'{{/if}}, sans-serif;
+  font-family: {{#if template_settings.header_font_family_css}}'{{template_settings.header_font_family_css}}'{{else}}{{#if template_settings.header_font_family}}'{{template_settings.header_font_family}}'{{else}}'Arial'{{/if}}{{/if}}, sans-serif;
   font-size: 18px; 
   font-weight: bold; 
   color: var(--primary-color); 
@@ -233,24 +230,27 @@ body {
 }
 
 .bg-sky-row td {
-  background-color: var(--bg-input-blue) !important;
+  background-color: rgb(from var(--accent-color) r g b / 0.14) !important;
   padding-top: 1px !important;
   padding-bottom: 1px !important;
+  margin-bottom: 2px !important;
 }
 
 .txt-blue-val {
-  color: var(--bright-blue) !important;
-  font-weight: bold;
+  color: var(--text-dark) !important;
+  font-weight: normal !important;
 }
 
 .amt-pos { color: var(--pos-green) !important; }
+
+.amt-neg { color: var(--neg-red) !important; }
 
 .row-bold td { font-weight: bold; }
 .row-total td { font-weight: bold; border-top: 1px solid #000000; border-bottom: 1px solid #000000; }
 
 .row-final-balance td {
   font-weight: bold;
-  background-color: var(--bg-darker-blue) !important;
+  background-color: rgb(from var(--accent-color) r g b / 0.20) !important;
   border-top: 2.5px solid var(--primary-color) !important;
   border-bottom: 2.5px solid var(--primary-color) !important;
 }
@@ -293,6 +293,19 @@ body {
   vertical-align: middle;
   border-bottom: none;
 }
+
+body .payment-details-table-bordered {
+  border: 1px solid var(--primary-color) !important; 
+  border-collapse: collapse !important;
+}
+
+body .payment-details-table-bordered td {
+  border: 1px solid var(--primary-color) !important; 
+}
+
+body .payment-details-table-striped tr:nth-child(even) {
+  background-color: rgb(from var(--accent-color) r g b / 0.22) !important; 
+}
 `
 }
 
@@ -320,7 +333,7 @@ func DefaultTemplates() []RqGlobalTemplate {
       {{#each patient_fee_items}}
       <tr{{#if row_class}} class="{{row_class}}"{{/if}}>
         <td>{{label}}</td>
-        <td class="num{{#if value_class}} {{value_class}}{{/if}}">{{format_currency amount}}</td>
+        <td class="num{{#if value_class}} {{value_class}}{{/if}}">{{format_table_amount this}}</td>
         <td class="center">{{bas_code}}</td>
       </tr>
       {{/each}}
@@ -340,7 +353,7 @@ func DefaultTemplates() []RqGlobalTemplate {
         <td colspan="3" style="border-bottom: none; padding-top: 5px; padding-bottom: 4px;">
           <table class="layout-table" style="width: 100%%; border-collapse: collapse;">
             <tr>
-              <td style="padding: 0; color: var(--text-dark); width: 65%%; vertical-align: middle;">
+              <td style="padding: 0; color: black; width: 65%%; vertical-align: middle;">
                 {{service_fee_rate_intro.label}}
                 <span style="float: right; font-weight: bold; white-space: nowrap; margin-left: 8px;">
                   Fee rate&nbsp;
@@ -373,24 +386,31 @@ func DefaultTemplates() []RqGlobalTemplate {
   <table class="data-table">
     <thead>
       <tr>
-        <th style="width: 85%%; text-align: left;">3. NET SETTLEMENT</th>
-        <th style="width: 15%%; text-align: right;">Amount</th>
+        <th style="width: 65%%; text-align: left;">3. NET SETTLEMENT</th>
+        <th style="width: 20%%; text-align: right;">Amount</th>
+        <th style="width: 15%%; text-align: center;">BAS Code</th>
       </tr>
     </thead>
     <tbody>
       {{#each settlement_items}}
       <tr{{#if row_class}} class="{{row_class}}"{{/if}}>
-        <td>{{label}}</td>
-        <td class="num{{#if value_class}} {{value_class}}{{/if}}"{{#if is_bold}} style="font-weight: bold;"{{/if}}>{{#if is_negative}}({{format_currency amount}}){{else}}{{format_currency amount}}{{/if}}</td>
+        <td style="width: 65%%;">{{label}}</td>
+        <td class="num{{#if value_class}} {{value_class}}{{/if}}" style="width: 20%%;{{#if is_bold}} font-weight: bold;{{/if}}">{{#if is_negative}}({{format_currency amount}}){{else}}{{format_currency amount}}{{/if}}</td>
+        <td class="center" style="width: 15%%;">{{bas_code}}</td>
       </tr>
       {{/each}}
     </tbody>
   </table>
 
   <div class="footer-notes-box">
-    <p style="font-style: italic; margin-bottom: 4px;">Notes: Total patient fees, GST collected (1A) and laboratory fees are sourced from the practice management system for the billing period. Highlighted rows indicate data input variables; all other figures are calculated. BAS codes are shown for the clinic's activity statement.</p>
     {{#if notes}}
     <p style="margin-top: 4px; font-weight: normal; color: var(--text-dark);"><strong>Notes:</strong> {{notes}}</p>
+    {{else}}
+      {{#if template_settings.terms_text}}
+      <p style="margin-top: 4px; font-weight: normal; color: var(--text-dark);"><strong>Notes:</strong> {{template_settings.terms_text}}</p>
+      {{else}}
+      <p style="font-style: italic; margin-bottom: 4px;">Notes: Total patient fees, GST collected (1A) and laboratory fees are sourced from the practice management system for the billing period. Highlighted rows indicate data input variables; all other figures are calculated. BAS codes are shown for the clinic's activity statement.</p>
+      {{/if}}
     {{/if}}
   </div>
 </div>`, defaultTemplateHeader("CALCULATION STATEMENT", "Statement No.", calculationPreparedFor)),
@@ -411,25 +431,36 @@ func DefaultTemplates() []RqGlobalTemplate {
       </tr>
     </thead>
     <tbody>
-      {{#each service_fee_items}}
-      <tr{{#if row_class}} class="{{row_class}}"{{/if}}>
-        <td style="width: 65%%;{{#if is_fee_rate_intro}} border-bottom: none; padding-top: 5px; padding-bottom: 4px; color: var(--text-dark);{{/if}}">
-          {{label}}
-          {{#if is_fee_rate_intro}}
-          <span style="font-weight: bold; white-space: nowrap; margin-left: 8px;">
-            Fee rate&nbsp;<span class="txt-blue-val">{{fee_rate_display}}</span>
-          </span>
-          {{#if ../service_description_items}}
-          <ol style="margin: 6px 0 0 0; padding-left: 18px; list-style-type: decimal; font-size: 11px; line-height: 1.5; color: var(--text-dark);">
-            {{#each ../service_description_items}}
+      <tr>
+        <td colspan="3" style="border-bottom: none; padding-top: 5px; padding-bottom: 4px;">
+          <table class="layout-table" style="width: 100%%; border-collapse: collapse;">
+            <tr>
+              <td style="padding: 0; color: var(--text-dark); width: 65%%; vertical-align: middle;">
+                {{service_fee_rate_intro.label}}
+                <span style="float: right; font-weight: bold; white-space: nowrap; margin-left: 8px;">
+                  Fee rate&nbsp;
+                  <span class="txt-blue-val">{{service_fee_rate_intro.fee_rate_display}}</span>
+                </span>
+              </td>
+              <td style="width: 20%%; padding: 0;"></td>
+              <td style="width: 15%%; padding: 0;"></td>
+            </tr>
+          </table>
+          {{#if service_description_items}}
+          <ol style="margin: 6px 0 0 18px; padding: 0; list-style-type: decimal; font-size: 11px; line-height: 1.5; color: var(--text-dark);">
+            {{#each service_description_items}}
             <li style="margin-bottom: 2px;">{{this}}</li>
             {{/each}}
           </ol>
           {{/if}}
-          {{/if}}
         </td>
-        <td class="num{{#if value_class}} {{value_class}}{{/if}}" style="width: 20%%; text-align: right;{{#if is_fee_rate_intro}} border-bottom: none; padding-top: 5px; padding-bottom: 4px;{{/if}}{{#if is_bold}} font-weight: bold;{{/if}}">{{format_table_amount this}}</td>
-        <td class="center" style="width: 15%%;{{#if is_fee_rate_intro}} border-bottom: none; padding-top: 5px; padding-bottom: 4px;{{/if}}">{{bas_code}}</td>
+      </tr>
+      
+      {{#each service_fee_items}}
+      <tr{{#if row_class}} class="{{row_class}}"{{/if}}>
+        <td style="width: 65%%;">{{label}}</td>
+        <td class="num{{#if value_class}} {{value_class}}{{/if}}" style="width: 20%%; text-align: right;{{#if is_bold}} font-weight: bold;{{/if}}">{{format_table_amount this}}</td>
+        <td class="center" style="width: 15%%;">{{bas_code}}</td>
       </tr>
       {{/each}}
     </tbody>
@@ -448,7 +479,7 @@ func DefaultTemplates() []RqGlobalTemplate {
             <td style="padding: 3px 6px; text-align: left;">GST (10%%)</td>
             <td class="num" style="padding: 3px 6px;">{{format_currency tax_total}}</td>
           </tr>
-          <tr style="font-weight: bold; background-color: var(--bg-input-blue);">
+          <tr style="font-weight: bold; background-color: rgb(from var(--accent-color) r g b / 0.45) !important;">
             <td style="padding: 5px 6px; border-top: 1px solid #000000; border-bottom: 2px solid #000000; text-align: left;">TOTAL (incl. GST)</td>
             <td class="num" style="padding: 5px 6px; border-top: 1px solid #000000; border-bottom: 2px solid #000000;">{{format_currency grand_total}}</td>
           </tr>
@@ -457,16 +488,18 @@ func DefaultTemplates() []RqGlobalTemplate {
     </tr>
   </table>
 
-  {{#if terms_text}}
+ {{#if payment_terms}}
   <div class="footer-notes-box" style="margin-top: 24px;">
-    <p><strong>Payment terms:</strong> {{terms_text}}</p>
+    <p><strong>Payment terms:</strong> {{payment_terms}}</p>
+  </div>
+  {{else if template_settings.payment_terms}}
+  <div class="footer-notes-box" style="margin-top: 24px;">
+    <p><strong>Payment terms:</strong> {{template_settings.payment_terms}}</p>
   </div>
   {{else}}
-    {{#if template_settings.terms_text}}
-    <div class="footer-notes-box" style="margin-top: 24px;">
-      <p><strong>Payment terms:</strong> {{template_settings.terms_text}}</p>
-    </div>
-    {{/if}}
+  <div class="footer-notes-box" style="margin-top: 24px;">
+    <p style="font-style: italic; margin-bottom: 4px;"><strong>Payment terms:</strong> This invoice is settled by offset against patient fees collected on your behalf. No payment is required—refer to the attached Remittance Advice for the net amount payable to you.</p>
+  </div>
   {{/if}}
 </div>`, defaultTemplateHeader("TAX INVOICE", "Invoice No.", taxInvoiceBillTo)),
 			Css: sharedCSS(),
@@ -480,15 +513,17 @@ func DefaultTemplates() []RqGlobalTemplate {
   <table class="data-table">
     <thead>
       <tr>
-        <th style="width: 80%%; text-align: left;">NET AMOUNT PAYABLE TO YOU</th>
+        <th style="width: 65%%; text-align: left;">NET AMOUNT PAYABLE TO YOU</th>
         <th style="width: 20%%; text-align: right;">Amount</th>
+        <th style="width: 15%%; text-align: center;">BAS Code</th>
       </tr>
     </thead>
     <tbody>
       {{#each remittance_items}}
       <tr{{#if row_class}} class="{{row_class}}"{{/if}}>
-        <td>{{label}}</td>
-        <td class="num{{#if value_class}} {{value_class}}{{/if}}">{{#if is_negative}}({{format_currency amount}}){{else}}{{format_currency amount}}{{/if}}</td>
+        <td style="width: 65%%;">{{label}}</td>
+        <td class="num{{#if value_class}} {{value_class}}{{/if}}" style="width: 20%%;">{{#if is_negative}}({{format_currency amount}}){{else}}{{format_currency amount}}{{/if}}</td>
+        <td class="center" style="width: 15%%;">{{bas_code}}</td>
       </tr>
       {{/each}}
     </tbody>
@@ -496,7 +531,7 @@ func DefaultTemplates() []RqGlobalTemplate {
 
   <div class="payment-details-container">
     <div class="payment-details-header">PAYMENT DETAILS</div>
-    <table class="payment-details-table">
+    <table class="payment-details-table{{#if table_style_bordered}} payment-details-table-bordered{{/if}}{{#if table_style_striped}} payment-details-table-striped{{/if}}">
       <tbody>
         <tr>
           <td style="font-weight: bold; width: 45%%;">Payment method</td>
@@ -522,8 +557,8 @@ func DefaultTemplates() []RqGlobalTemplate {
     </table>
   </div>
 
-  <p style="margin-top: 30px; font-size: 11px; color: #4b5563; text-align: center; line-height: 1.5;">
-    This remittance advice is issued monthly together with the Calculation Statement (page 1) and Tax Invoice (page 2).<br>Please retain for your records and provide to your accountant at year end.
+  <p style="margin-top: 30px; font-size: 11px; color: #4b5563; text-align: center; line-height: 1.5; text-transform: lowercase;">
+    <span style="text-transform: none;">This remittance advice is issued</span> {{invoice_frequency}} <span style="text-transform: none;">together with the Calculation Statement (page 1) and Tax Invoice (page 2).<br>Please retain for your records and provide to your accountant at year end.</span>
   </p>
 </div>`, defaultTemplateHeader("REMITTANCE ADVICE", "Reference", remittancePayee)),
 			Css: sharedCSS(),
@@ -533,13 +568,15 @@ func DefaultTemplates() []RqGlobalTemplate {
 
 func DefaultSettings(templateId uuid.UUID) Setting {
 	termText := "This invoice is settled by offset against patient fees collected on your behalf. No payment is required—refer to the attached Remittance Advice for the net amount payable to you."
+	paymentTerms := "This invoice is settled by offset against patient fees collected on your behalf. No payment is required—refer to the attached Remittance Advice for the net amount payable to you."
 	waterMarkText := "PAID"
+	tableStyle := "simple"
 
 	return Setting{
 		TemplateId:       templateId,
 		MappingId:        nil,
 		PrimaryColor:     "#1f4e5f",
-		AccentColor:      "#1f4e5f",
+		AccentColor:      "#5f96b4",
 		BodyFontFamily:   "Arial",
 		HeaderFontFamily: "Arial",
 		IsLogo:           true,
@@ -547,9 +584,10 @@ func DefaultSettings(templateId uuid.UUID) Setting {
 		LetterHeadId:     nil,
 		FooterId:         nil,
 		TermText:         &termText,
+		PaymentTerms:     &paymentTerms,
 		IsWaterMark:      false,
 		WaterMarkText:    &waterMarkText,
 		IsTax:            true,
-		TableStyle:       nil,
+		TableStyle:       &tableStyle,
 	}
 }

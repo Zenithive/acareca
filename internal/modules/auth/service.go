@@ -70,12 +70,11 @@ type service struct {
 	practitionerRepo practitioner.Repository
 	accountantSvc    accountant.IService
 	adminSvc         admin.IService
-	inviteRepo       invitation.Repository
 	fileRepo         filemod.Repository
 	PreferenceSvc    preference.IService
 }
 
-func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSvc practitioner.IService, auditSvc audit.Service, invitationSvc invitation.Service, practitionerRepo practitioner.Repository, accountantSvc accountant.IService, adminSvc admin.IService, inviteRepo invitation.Repository, fileRepo filemod.Repository, preferenceSvc preference.IService) Service {
+func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSvc practitioner.IService, auditSvc audit.Service, invitationSvc invitation.Service, practitionerRepo practitioner.Repository, accountantSvc accountant.IService, adminSvc admin.IService, fileRepo filemod.Repository, preferenceSvc preference.IService) Service {
 	oauthCfg := &oauth2.Config{
 		ClientID:     cfg.GoogleClientID,
 		ClientSecret: cfg.GoogleClientSecret,
@@ -98,7 +97,6 @@ func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSv
 		practitionerRepo: practitionerRepo,
 		accountantSvc:    accountantSvc,
 		adminSvc:         adminSvc,
-		inviteRepo:       inviteRepo,
 		fileRepo:         fileRepo,
 		PreferenceSvc:    preferenceSvc,
 	}
@@ -233,7 +231,28 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 		AfterState: sanitizeUser(created),
 	})
 
-	return created.ToRsUser(), nil
+	resUser := created.ToRsUser()
+
+	switch created.Role {
+	case util.RolePractitioner:
+		resUser.EntityType = req.EntityType
+		resUser.EntityName = req.EntityName
+		resUser.ABN = req.ABN
+		resUser.ACN = req.ACN
+		resUser.Address = req.Address
+		resUser.Profession = req.Profession
+
+	case util.RoleAccountant:
+		resUser.EntityType = req.EntityType
+		resUser.EntityName = req.EntityName
+		resUser.ABN = req.ABN
+		resUser.ACN = req.ACN
+		resUser.Address = req.Address
+		resUser.Profession = req.Profession
+		resUser.TaxAgentNumber = req.TaxAgentNumber
+	}
+
+	return resUser, nil
 }
 
 func (s *service) Login(ctx context.Context, req *RqLogin) (*RsToken, error) {
@@ -689,7 +708,7 @@ func (s *service) ForgotPassword(ctx context.Context, req *RqForgotPassword) err
 	}
 
 	if user.Role == util.RoleAccountant {
-		inv, err := s.inviteRepo.GetByEmail(ctx, req.Email)
+		inv, err := s.invitationSvc.GetInvitationByEmailInternal(ctx, req.Email)
 		if err != nil || inv == nil {
 			return errors.New("no active account found")
 		}
@@ -755,7 +774,7 @@ func (s *service) issueTokens(ctx context.Context, user *User, entityID string) 
 		return nil, err
 	}
 
-	refreshToken, err := util.SignToken(user.ID.String(), entityID, user.Role, 7*24*time.Hour, s.cfg.JWTRefreshSecret)
+	refreshToken, err := util.SignToken(user.ID.String(), entityID, user.Role, 7*24*time.Hour, s.cfg.JWTSecret)
 	if err != nil {
 		return nil, err
 	}

@@ -2,6 +2,7 @@ package chromepdf
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/aymerick/raymond"
 )
@@ -48,7 +49,7 @@ func toFloat64(v any) float64 {
 
 func init() {
 	raymond.RegisterHelper("format_currency", func(amount float64) string {
-		return fmt.Sprintf("$%.2f", amount)
+		return fmt.Sprintf("$%.2f", math.Abs(amount))
 	})
 
 	raymond.RegisterHelper("format_table_amount", func(row any) string {
@@ -61,7 +62,7 @@ func init() {
 			}
 		}
 		amount := toFloat64(m["amount"])
-		formatted := fmt.Sprintf("$%.2f", amount)
+		formatted := fmt.Sprintf("$%.2f", math.Abs(amount))
 		if neg, _ := m["is_negative"].(bool); neg {
 			return fmt.Sprintf("(%s)", formatted)
 		}

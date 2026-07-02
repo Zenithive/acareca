@@ -26,7 +26,7 @@ type RqEntry struct {
 	EntryType        *EntryType  `json:"entryType,omitempty"`
 	BASCode          *BasCode    `json:"basCode,omitempty"`
 	FieldKey         *string     `json:"fieldKey,omitempty"`
-	Amount           *float64    `json:"amount,omitempty" validate:"omitempty,gt=0"`
+	Amount           *float64    `json:"amount,omitempty"`
 	SortOrder        int         `json:"sortOrder" validate:"required"`
 	Expression       interface{} `json:"expression"`
 	InvoiceSectionID *uuid.UUID  `json:"invoiceSectionId,omitempty"`
@@ -66,7 +66,7 @@ type RqUpdateEntry struct {
 	EntryType        *EntryType  `json:"entryType,omitempty"`
 	BASCode          *BasCode    `json:"basCode,omitempty"`
 	FieldKey         *string     `json:"fieldKey,omitempty"`
-	Amount           *float64    `json:"amount,omitempty" validate:"omitempty,gt=0"`
+	Amount           *float64    `json:"amount,omitempty"`
 	SortOrder        *int        `json:"sortOrder,omitempty"`
 	Expression       interface{} `json:"expression,omitempty"`
 	InvoiceSectionID *uuid.UUID  `json:"invoiceSectionId,omitempty"`

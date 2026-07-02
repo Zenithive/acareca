@@ -34,7 +34,10 @@ type handler struct {
 }
 
 func NewHandler(svc Service) IHandler {
-	cfg := config.NewConfig()
+	cfg, err := config.NewConfig()
+	if err != nil {
+		panic(err)
+	}
 	return &handler{svc: svc, cfg: *cfg}
 }
 
@@ -218,11 +221,15 @@ func (h *handler) Logout(c *gin.Context) {
 // @Description Returns the URL to redirect the user to for Google OAuth
 // @Tags auth
 // @Produce json
+// @Param state query string false "OAuth state parameter (optional, will be generated if not provided)"
 // @Success 200 {object} RsGoogleAuthURL
 // @Failure 500 {object} response.RsError
 // @Router /auth/google [get]
 func (h *handler) GoogleAuthURL(c *gin.Context) {
-	state := util.NewUUID()
+	state := c.Query("state")
+	if state == "" {
+		state = util.NewUUID()
+	}
 	result := h.svc.GoogleAuthURL(state)
 	response.JSON(c, http.StatusOK, result, "Google OAuth consent-screen URL fetched successfully")
 }
@@ -251,9 +258,6 @@ func (h *handler) GoogleCallback(c *gin.Context) {
 	}
 
 	frontendURL := h.cfg.FrontendURL
-	if h.cfg.Env == "local" {
-		frontendURL = h.cfg.LocalUrl
-	}
 
 	redirectURL := fmt.Sprintf("%s/auth/callback?access_token=%s&refresh_token=%s",
 		frontendURL, token.AccessToken, token.RefreshToken)

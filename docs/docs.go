@@ -2457,7 +2457,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/auth.RqLogin"
+                            "$ref": "#/definitions/internal_modules_auth.RqLogin"
                         }
                     }
                 ],
@@ -2706,7 +2706,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/auth.RqLogout"
+                            "$ref": "#/definitions/internal_modules_auth.RqLogout"
                         }
                     }
                 ],
@@ -5021,7 +5021,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/auth.RqLoginClinic"
+                            "$ref": "#/definitions/internal_modules_clinic_auth.RqLogin"
                         }
                     }
                 ],
@@ -5078,7 +5078,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/auth.RqLogoutClinic"
+                            "$ref": "#/definitions/internal_modules_clinic_auth.RqLogout"
                         }
                     }
                 ],
@@ -5170,7 +5170,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/auth.RqUpdateClinic"
+                            "$ref": "#/definitions/auth.RqUpdate"
                         }
                     }
                 ],
@@ -5178,7 +5178,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/auth.RsClinicDetail"
+                            "$ref": "#/definitions/auth.RsClinic"
                         }
                     },
                     "400": {
@@ -5222,7 +5222,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/auth.RqRegisterClinic"
+                            "$ref": "#/definitions/auth.RqRegister"
                         }
                     }
                 ],
@@ -12039,31 +12039,7 @@ const docTemplate = `{
                 }
             }
         },
-        "auth.RqAddressChangeset": {
-            "type": "object",
-            "properties": {
-                "create": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/auth.RqClinicAddress"
-                    }
-                },
-                "delete": {
-                    "description": "address IDs (UUID strings)",
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "update": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/auth.RqUpdateClinicAddress"
-                    }
-                }
-            }
-        },
-        "auth.RqClinicAddress": {
+        "auth.RqAddress": {
             "type": "object",
             "properties": {
                 "address": {
@@ -12083,7 +12059,53 @@ const docTemplate = `{
                 }
             }
         },
-        "auth.RqClinicContact": {
+        "auth.RqBulkUpdateAddress": {
+            "type": "object",
+            "properties": {
+                "create": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/auth.RqAddress"
+                    }
+                },
+                "delete": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "update": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/auth.RqUpdateAddress"
+                    }
+                }
+            }
+        },
+        "auth.RqBulkUpdateContact": {
+            "type": "object",
+            "properties": {
+                "create": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/auth.RqContact"
+                    }
+                },
+                "delete": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "update": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/auth.RqUpdateContact"
+                    }
+                }
+            }
+        },
+        "auth.RqContact": {
             "type": "object",
             "properties": {
                 "contact_type": {
@@ -12104,83 +12126,7 @@ const docTemplate = `{
                 }
             }
         },
-        "auth.RqContactChangeset": {
-            "type": "object",
-            "properties": {
-                "create": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/auth.RqClinicContact"
-                    }
-                },
-                "delete": {
-                    "description": "contact IDs (UUID strings)",
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "update": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/auth.RqUpdateClinicContact"
-                    }
-                }
-            }
-        },
-        "auth.RqLogin": {
-            "type": "object",
-            "required": [
-                "email",
-                "password"
-            ],
-            "properties": {
-                "email": {
-                    "type": "string"
-                },
-                "password": {
-                    "type": "string"
-                }
-            }
-        },
-        "auth.RqLoginClinic": {
-            "type": "object",
-            "required": [
-                "email",
-                "password"
-            ],
-            "properties": {
-                "email": {
-                    "type": "string"
-                },
-                "password": {
-                    "type": "string"
-                }
-            }
-        },
-        "auth.RqLogout": {
-            "type": "object",
-            "required": [
-                "refresh_token"
-            ],
-            "properties": {
-                "refresh_token": {
-                    "type": "string"
-                }
-            }
-        },
-        "auth.RqLogoutClinic": {
-            "type": "object",
-            "required": [
-                "refresh_token"
-            ],
-            "properties": {
-                "refresh_token": {
-                    "type": "string"
-                }
-            }
-        },
-        "auth.RqRegisterClinic": {
+        "auth.RqRegister": {
             "type": "object",
             "required": [
                 "abn",
@@ -12200,7 +12146,7 @@ const docTemplate = `{
                     "type": "array",
                     "minItems": 1,
                     "items": {
-                        "$ref": "#/definitions/auth.RqClinicAddress"
+                        "$ref": "#/definitions/auth.RqAddress"
                     }
                 },
                 "clinic_name": {
@@ -12212,7 +12158,7 @@ const docTemplate = `{
                     "type": "array",
                     "minItems": 1,
                     "items": {
-                        "$ref": "#/definitions/auth.RqClinicContact"
+                        "$ref": "#/definitions/auth.RqContact"
                     }
                 },
                 "description": {
@@ -12236,7 +12182,7 @@ const docTemplate = `{
                 }
             }
         },
-        "auth.RqUpdateClinic": {
+        "auth.RqUpdate": {
             "type": "object",
             "properties": {
                 "abn": {
@@ -12246,7 +12192,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "addresses": {
-                    "$ref": "#/definitions/auth.RqAddressChangeset"
+                    "$ref": "#/definitions/auth.RqBulkUpdateAddress"
                 },
                 "clinic_name": {
                     "type": "string",
@@ -12254,17 +12200,23 @@ const docTemplate = `{
                     "minLength": 2
                 },
                 "contacts": {
-                    "$ref": "#/definitions/auth.RqContactChangeset"
+                    "$ref": "#/definitions/auth.RqBulkUpdateContact"
                 },
                 "description": {
                     "type": "string"
                 },
                 "document_id": {
                     "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "update_at": {
+                    "type": "string"
                 }
             }
         },
-        "auth.RqUpdateClinicAddress": {
+        "auth.RqUpdateAddress": {
             "type": "object",
             "required": [
                 "id"
@@ -12287,10 +12239,13 @@ const docTemplate = `{
                 },
                 "state": {
                     "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
                 }
             }
         },
-        "auth.RqUpdateClinicContact": {
+        "auth.RqUpdateContact": {
             "type": "object",
             "required": [
                 "id"
@@ -12310,6 +12265,9 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "label": {
+                    "type": "string"
+                },
+                "updated_at": {
                     "type": "string"
                 },
                 "value": {
@@ -12431,13 +12389,16 @@ const docTemplate = `{
                 }
             }
         },
-        "auth.RsClinicAddress": {
+        "auth.RsAddress": {
             "type": "object",
             "properties": {
                 "address": {
                     "type": "string"
                 },
                 "city": {
+                    "type": "string"
+                },
+                "created_at": {
                     "type": "string"
                 },
                 "id": {
@@ -12451,30 +12412,13 @@ const docTemplate = `{
                 },
                 "state": {
                     "type": "string"
-                }
-            }
-        },
-        "auth.RsClinicContact": {
-            "type": "object",
-            "properties": {
-                "contact_type": {
-                    "type": "string"
                 },
-                "id": {
-                    "type": "string"
-                },
-                "is_primary": {
-                    "type": "boolean"
-                },
-                "label": {
-                    "type": "string"
-                },
-                "value": {
+                "updated_at": {
                     "type": "string"
                 }
             }
         },
-        "auth.RsClinicDetail": {
+        "auth.RsClinic": {
             "type": "object",
             "properties": {
                 "abn": {
@@ -12486,7 +12430,7 @@ const docTemplate = `{
                 "addresses": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/auth.RsClinicAddress"
+                        "$ref": "#/definitions/auth.RsAddress"
                     }
                 },
                 "clinic_name": {
@@ -12495,7 +12439,7 @@ const docTemplate = `{
                 "contacts": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/auth.RsClinicContact"
+                        "$ref": "#/definitions/auth.RsContact"
                     }
                 },
                 "created_at": {
@@ -12506,9 +12450,6 @@ const docTemplate = `{
                 },
                 "document": {
                     "$ref": "#/definitions/file.RsDocument"
-                },
-                "document_id": {
-                    "type": "string"
                 },
                 "email": {
                     "type": "string"
@@ -12524,6 +12465,32 @@ const docTemplate = `{
                 },
                 "verified": {
                     "type": "boolean"
+                }
+            }
+        },
+        "auth.RsContact": {
+            "type": "object",
+            "properties": {
+                "contact_type": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_primary": {
+                    "type": "boolean"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "string"
                 }
             }
         },
@@ -14641,6 +14608,32 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_modules_auth.RqLogin": {
+            "type": "object",
+            "required": [
+                "email",
+                "password"
+            ],
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_auth.RqLogout": {
+            "type": "object",
+            "required": [
+                "refresh_token"
+            ],
+            "properties": {
+                "refresh_token": {
+                    "type": "string"
+                }
+            }
+        },
         "internal_modules_auth.RqResetPassword": {
             "type": "object",
             "required": [
@@ -14690,6 +14683,32 @@ const docTemplate = `{
             ],
             "properties": {
                 "email": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_clinic_auth.RqLogin": {
+            "type": "object",
+            "required": [
+                "email",
+                "password"
+            ],
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_clinic_auth.RqLogout": {
+            "type": "object",
+            "required": [
+                "refresh_token"
+            ],
+            "properties": {
+                "refresh_token": {
                     "type": "string"
                 }
             }
@@ -16139,12 +16158,22 @@ const docTemplate = `{
                         "additionalProperties": true
                     }
                 },
+                "service_description_items": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "service_fee_items": {
                     "type": "array",
                     "items": {
                         "type": "object",
                         "additionalProperties": true
                     }
+                },
+                "service_fee_rate_intro": {
+                    "type": "object",
+                    "additionalProperties": true
                 },
                 "settlement_items": {
                     "type": "array",

@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"log"
 	"strings"
 	"time"
 
@@ -18,20 +17,14 @@ func CORS(cfg *config.Config) gin.HandlerFunc {
 	var origins []string
 	allowCredentials := true
 
-	if allowedOrigins == "" {
-		origins = []string{cfg.LocalUrl}
-		log.Printf("[WARN] ALLOWED_ORIGINS not set — falling back to LOCAL_API_URL=%q\n", cfg.LocalUrl)
-	} else {
-		for _, o := range strings.Split(allowedOrigins, ",") {
-			trimmed := strings.TrimSpace(o)
-			if trimmed == "" {
-				continue
-			}
-			origins = append(origins, trimmed)
-			if trimmed == "*" {
-				// credentials cannot be used with a wildcard origin
-				allowCredentials = false
-			}
+	for _, o := range strings.Split(allowedOrigins, ",") {
+		trimmed := strings.TrimSpace(o)
+		if trimmed == "" {
+			continue
+		}
+		origins = append(origins, trimmed)
+		if trimmed == "*" {
+			allowCredentials = false
 		}
 	}
 

@@ -13,42 +13,6 @@ type ISection interface {
 	Build(ctx context.Context, invoiceId *uuid.UUID) (Section, error)
 }
 
-type CalculationStatement struct {
-	DocumentNumber   string
-	TaxMethod        *TaxMethod
-	PaymentMethod    *string
-	AccountName      *string
-	Bsb              *string
-	AccountNumber    *string
-	PaymentDate      *string
-	PaymentReference *string
-	Entries          []*item.Item
-}
-
-type SfaInvoice struct {
-	DocumentNumber   string
-	TaxMethod        *TaxMethod
-	PaymentMethod    *string
-	AccountName      *string
-	Bsb              *string
-	AccountNumber    *string
-	PaymentDate      *string
-	PaymentReference *string
-	Entries          []*item.Item
-}
-
-type RemittanceInvoice struct {
-	DocumentNumber   string
-	TaxMethod        *TaxMethod
-	PaymentMethod    *string
-	AccountName      *string
-	Bsb              *string
-	AccountNumber    *string
-	PaymentDate      *string
-	PaymentReference *string
-	Entries          []*item.Item
-}
-
 func (ct CalculationStatement) Build(ctx context.Context, invoiceId *uuid.UUID, calculatedDocNum string) (Section, error) {
 	sectionID := uuid.New()
 
