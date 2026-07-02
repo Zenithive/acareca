@@ -81,7 +81,7 @@ func (r *Repository) GetByID(ctx context.Context, tx *sqlx.Tx, id uuid.UUID) (*F
 
 	valQuery := `SELECT id, entry_id, form_field_id, coa_id, net_amount, gst_amount, gross_amount, description, date, business_percentage, created_at, updated_at
 		FROM tbl_form_entry_value
-		WHERE entry_id = $1 AND updated_at IS NULL
+		WHERE entry_id = $1 AND updated_at IS NULL AND form_field_id IS NOT NULL
 		`
 	var values []*FormEntryValue
 	if err := tx.SelectContext(ctx, &values, valQuery, id); err != nil {
@@ -114,7 +114,7 @@ func (r *Repository) GetByValueID(ctx context.Context, tx *sqlx.Tx, entryId uuid
 	// Load all active values under this parent entry container
 	valQuery := `SELECT id, entry_id, form_field_id, coa_id, net_amount, gst_amount, gross_amount, description, date, business_percentage, created_at, updated_at
         FROM tbl_form_entry_value
-        WHERE entry_id = $1 AND deleted_at IS NULL`
+        WHERE entry_id = $1 AND deleted_at IS NULL AND form_field_id IS NOT NULL`
 
 	var values []*FormEntryValue
 	if err := tx.SelectContext(ctx, &values, valQuery, entryId); err != nil {
@@ -232,7 +232,7 @@ func (r *Repository) GetByVersionID(ctx context.Context, id uuid.UUID) (*FormEnt
 
 	valQuery := `SELECT id, entry_id, form_field_id, coa_id, net_amount, gst_amount, gross_amount, description, date, business_percentage , description, created_at, updated_at
 		FROM tbl_form_entry_value
-		WHERE entry_id = $1 AND updated_at IS NULL
+		WHERE entry_id = $1 AND updated_at IS NULL AND form_field_id IS NOT NULL
 		`
 	var values []*FormEntryValue
 	if err := r.db.SelectContext(ctx, &values, valQuery, e.ID); err != nil {
