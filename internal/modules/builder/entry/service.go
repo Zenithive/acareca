@@ -971,6 +971,13 @@ func (s *Service) roundValue(val float64) float64 {
 func (s *Service) attachFieldMetadata(ctx context.Context, rs *RsFormEntry) {
 	for i, v := range rs.Values {
 		if v.FormFieldID == nil {
+			// For system-generated entries (no form_field_id), get COA name
+			if v.CoaID != nil {
+				coaName, err := s.repo.GetCoaNameByID(ctx, *v.CoaID)
+				if err == nil {
+					rs.Values[i].Label = coaName
+				}
+			}
 			continue
 		}
 
