@@ -5,9 +5,13 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
+	"reflect"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/engine/pl"
 	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
@@ -49,11 +53,12 @@ type IRepository interface {
 }
 
 type Repository struct {
-	db *sqlx.DB
+	db     *sqlx.DB
+	plRepo pl.Repository
 }
 
-func NewRepository(db *sqlx.DB) IRepository {
-	return &Repository{db: db}
+func NewRepository(db *sqlx.DB, plRepo pl.Repository) IRepository {
+	return &Repository{db: db, plRepo: plRepo}
 }
 
 func (r *Repository) GetByID(ctx context.Context, tx *sqlx.Tx, id uuid.UUID) (*FormEntry, []*FormEntryValue, error) {
@@ -639,6 +644,83 @@ func (r *Repository) ListCoaEntries(ctx context.Context, f common.Filter, actorI
 			EntryCount:       row.EntryCount,
 		})
 	}
+
+	var targetPracIDs []uuid.UUID
+	if strings.EqualFold(role, util.RoleAccountant) {
+		err := r.db.SelectContext(ctx, &targetPracIDs, `SELECT practitioner_id FROM tbl_invitation WHERE accountant_id = ? AND status = 'COMPLETED'`, actorID)
+		if err != nil {
+			return result, nil
+		}
+	} else {
+		targetPracIDs = []uuid.UUID{actorID}
+	}
+
+	if len(targetPracIDs) > 0 {
+		plFilter := &pl.PLReportFilter{}
+
+		// Unpack reflect interface values securely
+		vStruct := reflect.Indirect(reflect.ValueOf(f))
+		if vStruct.IsValid() && vStruct.Kind() == reflect.Struct {
+			if fv := vStruct.FieldByName("DateFrom"); fv.IsValid() && !fv.IsZero() {
+				if p, ok := fv.Interface().(*string); ok {
+					plFilter.DateFrom = p
+				}
+			}
+			if fv := vStruct.FieldByName("DateUntil"); fv.IsValid() && !fv.IsZero() {
+				if p, ok := fv.Interface().(*string); ok {
+					plFilter.DateUntil = p
+				}
+			}
+			if fv := vStruct.FieldByName("ClinicID"); fv.IsValid() && !fv.IsZero() {
+				if p, ok := fv.Interface().(*string); ok {
+					plFilter.ClinicID = p
+				}
+			}
+		}
+
+		summary, err := r.plRepo.GetPLSummary(ctx, targetPracIDs, plFilter)
+		if err == nil && summary != nil && summary.NetProfitNet != 0 {
+			var reCOA struct {
+				ID   uuid.UUID `db:"id"`
+				Name string    `db:"name"`
+			}
+			err = r.db.GetContext(ctx, &reCOA, `
+				SELECT v.id, COALESCE(v.name, tpl.name) AS name 
+				FROM tbl_chart_of_accounts v
+				LEFT JOIN tbl_chart_of_accounts_template tpl ON tpl.id = v.template_id
+				WHERE (COALESCE(v.code, tpl.code) = 960 OR LOWER(COALESCE(v.name, tpl.name)) = 'retained earnings')
+				  AND v.deleted_at IS NULL LIMIT 1`)
+
+			if err != nil {
+				reCOA.ID = uuid.MustParse("00000000-0000-0000-0000-000000000960")
+				reCOA.Name = "Retained Earnings"
+			}
+
+			found := false
+			for _, entry := range result {
+				if strings.EqualFold(entry.CoaName, reCOA.Name) || entry.CoaID == reCOA.ID.String() {
+					entry.TotalNetAmount += math.Abs(summary.NetProfitNet)
+					entry.TotalGrossAmount += math.Abs(summary.NetProfitNet)
+					entry.EntryCount += 1
+					found = true
+					break
+				}
+			}
+
+			if !found {
+				result = append(result, &RsCoaEntry{
+					CoaID:            reCOA.ID.String(),
+					CoaName:          reCOA.Name,
+					IsSystem:         true,
+					TotalNetAmount:   math.Abs(summary.NetProfitNet),
+					TotalGSTAmount:   0.0,
+					TotalGrossAmount: math.Abs(summary.NetProfitNet),
+					EntryCount:       1,
+				})
+			}
+		}
+	}
+
 	return result, nil
 }
 
@@ -702,6 +784,40 @@ func (r *Repository) CountCoaEntries(ctx context.Context, f common.Filter, actor
 	var total int
 	if err := r.db.QueryRowContext(ctx, q, args...).Scan(&total); err != nil {
 		return 0, fmt.Errorf("count coa entries via views: %w", err)
+	}
+
+	var targetPracIDs []uuid.UUID
+	if strings.EqualFold(role, util.RoleAccountant) {
+		_ = r.db.SelectContext(ctx, &targetPracIDs, `SELECT practitioner_id FROM tbl_invitation WHERE accountant_id = ? AND status = 'COMPLETED'`, actorID)
+	} else {
+		targetPracIDs = []uuid.UUID{actorID}
+	}
+
+	if len(targetPracIDs) > 0 {
+		plFilter := &pl.PLReportFilter{}
+		vStruct := reflect.Indirect(reflect.ValueOf(f))
+		if vStruct.IsValid() && vStruct.Kind() == reflect.Struct {
+			if fv := vStruct.FieldByName("DateFrom"); fv.IsValid() && !fv.IsZero() {
+				if p, ok := fv.Interface().(*string); ok {
+					plFilter.DateFrom = p
+				}
+			}
+			if fv := vStruct.FieldByName("DateUntil"); fv.IsValid() && !fv.IsZero() {
+				if p, ok := fv.Interface().(*string); ok {
+					plFilter.DateUntil = p
+				}
+			}
+			if fv := vStruct.FieldByName("ClinicID"); fv.IsValid() && !fv.IsZero() {
+				if p, ok := fv.Interface().(*string); ok {
+					plFilter.ClinicID = p
+				}
+			}
+		}
+
+		summary, err := r.plRepo.GetPLSummary(ctx, targetPracIDs, plFilter)
+		if err == nil && summary != nil && summary.NetProfitNet != 0 {
+			total++
+		}
 	}
 
 	return total, nil
@@ -906,6 +1022,63 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 
 		result = append(result, detail)
 	}
+
+	if strings.EqualFold(coaName, "Retained Earnings") {
+		var targetPracIDs []uuid.UUID
+		if strings.EqualFold(role, util.RoleAccountant) {
+			_ = r.db.SelectContext(ctx, &targetPracIDs, `SELECT practitioner_id FROM tbl_invitation WHERE accountant_id = ? AND status = 'COMPLETED'`, actorID)
+		} else {
+			targetPracIDs = []uuid.UUID{actorID}
+		}
+
+		plFilter := &pl.PLReportFilter{}
+		vStruct := reflect.Indirect(reflect.ValueOf(f))
+		if vStruct.IsValid() && vStruct.Kind() == reflect.Struct {
+			if fv := vStruct.FieldByName("DateFrom"); fv.IsValid() && !fv.IsZero() {
+				if p, ok := fv.Interface().(*string); ok {
+					plFilter.DateFrom = p
+				}
+			}
+			if fv := vStruct.FieldByName("DateUntil"); fv.IsValid() && !fv.IsZero() {
+				if p, ok := fv.Interface().(*string); ok {
+					plFilter.DateUntil = p
+				}
+			}
+			if fv := vStruct.FieldByName("ClinicID"); fv.IsValid() && !fv.IsZero() {
+				if p, ok := fv.Interface().(*string); ok {
+					plFilter.ClinicID = p
+				}
+			}
+		}
+
+		summary, err := r.plRepo.GetPLSummary(ctx, targetPracIDs, plFilter)
+		if err == nil && summary != nil && summary.NetProfitNet != 0 {
+			netVal := summary.NetProfitNet
+			grossVal := summary.NetProfitNet
+			txType := "CREDIT"
+			if netVal < 0 {
+				txType = "DEBIT"
+				netVal = netVal * -1
+				grossVal = grossVal * -1
+			}
+
+			zeroGst := 0.0
+			noteStr := "Calculated Net Income balance translation for selected period"
+
+			result = append(result, &RsCoaEntryDetail{
+				ID:              uuid.New().String(),
+				CoaName:         coaName,
+				FormFieldName:   "Net Profit",
+				TransactionType: txType,
+				NetAmount:       &netVal,
+				GstAmount:       &zeroGst,
+				GrossAmount:     &grossVal,
+				Notes:           &noteStr,
+				CreatedAt:       time.Now().Format("2006-01-02 15:04:05"),
+			})
+		}
+	}
+
 	return result, nil
 }
 
@@ -966,6 +1139,42 @@ func (r *Repository) CountCoaEntryDetails(ctx context.Context, coaName string, f
 	if err := r.db.QueryRowContext(ctx, q, args...).Scan(&total); err != nil {
 		return 0, fmt.Errorf("count coa entry details via views: %w", err)
 	}
+
+	if strings.EqualFold(coaName, "Retained Earnings") {
+		var targetPracIDs []uuid.UUID
+		if strings.EqualFold(role, util.RoleAccountant) {
+			_ = r.db.SelectContext(ctx, &targetPracIDs, `SELECT practitioner_id FROM tbl_invitation WHERE accountant_id = ? AND status = 'COMPLETED'`, actorID)
+		} else {
+			targetPracIDs = []uuid.UUID{actorID}
+		}
+
+		if len(targetPracIDs) > 0 {
+			plFilter := &pl.PLReportFilter{}
+			vStruct := reflect.Indirect(reflect.ValueOf(f))
+			if vStruct.IsValid() && vStruct.Kind() == reflect.Struct {
+				if fv := vStruct.FieldByName("DateFrom"); fv.IsValid() && !fv.IsZero() {
+					if p, ok := fv.Interface().(*string); ok {
+						plFilter.DateFrom = p
+					}
+				}
+				if fv := vStruct.FieldByName("DateUntil"); fv.IsValid() && !fv.IsZero() {
+					if p, ok := fv.Interface().(*string); ok {
+						plFilter.DateUntil = p
+					}
+				}
+				if fv := vStruct.FieldByName("ClinicID"); fv.IsValid() && !fv.IsZero() {
+					if p, ok := fv.Interface().(*string); ok {
+						plFilter.ClinicID = p
+					}
+				}
+			}
+			summary, err := r.plRepo.GetPLSummary(ctx, targetPracIDs, plFilter)
+			if err == nil && summary != nil && summary.NetProfitNet != 0 {
+				total++
+			}
+		}
+	}
+
 	return total, nil
 }
 
