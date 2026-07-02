@@ -191,6 +191,7 @@ type RsTransactionRow struct {
 	UpdatedAt          *string   `json:"updated_at,omitempty"`
 	Date               *string   `json:"date,omitempty"`
 	IsExpense          bool      `json:"is_expense"`
+	RetainedEarnings   *float64  `json:"retained_earnings,omitempty"`
 }
 
 type TransactionFilter struct {
@@ -333,6 +334,7 @@ type RsCoaEntryDetail struct {
 	SupplierName       *string  `json:"supplier_name,omitempty"`
 	IsExpense          bool     `json:"is_expense"`
 	TransactionType    string   `json:"transaction_type"`
+	AccountType        string   `json:"account_type"`
 	NetAmount          *float64 `json:"net_amount"`
 	GstAmount          *float64 `json:"gst_amount"`
 	GrossAmount        *float64 `json:"gross_amount"`
@@ -341,6 +343,7 @@ type RsCoaEntryDetail struct {
 	UpdatedAt          *string  `json:"updated_at,omitempty"`
 	Date               *string  `json:"date,omitempty"`
 	Notes              *string  `json:"notes,omitempty"`
+	RetainedEarnings   *float64 `json:"retained_earnings,omitempty"`
 }
 
 type RsExportData struct {
