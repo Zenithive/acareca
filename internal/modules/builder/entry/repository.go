@@ -871,6 +871,7 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 			TaxTypeName:        row.TaxTypeName,
 			IsExpense:          isExpense,
 			TransactionType:    row.TransactionType,
+			AccountType:        row.AccountType,
 			NetAmount:          &netVal,
 			GstAmount:          &gstVal,
 			GrossAmount:        &grossVal,
