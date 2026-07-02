@@ -1664,6 +1664,12 @@ definitions:
         type: string
       phone:
         type: string
+      role:
+        allOf:
+        - $ref: '#/definitions/util.ClinicContactPersonRole'
+        enum:
+        - DENTIST
+        - PATIENT
       website:
         type: string
     required:
@@ -1695,6 +1701,12 @@ definitions:
         type: string
       phone:
         type: string
+      role:
+        allOf:
+        - $ref: '#/definitions/util.ClinicContactPersonRole'
+        enum:
+        - DENTIST
+        - PATIENT
       website:
         type: string
     type: object
@@ -1741,6 +1753,8 @@ definitions:
         type: string
       phone:
         type: string
+      role:
+        $ref: '#/definitions/util.ClinicContactPersonRole'
       updated_at:
         type: string
       website:
@@ -3495,6 +3509,14 @@ definitions:
     - ChannelInApp
     - ChannelPush
     - ChannelEmail
+  util.ClinicContactPersonRole:
+    enum:
+    - DENTIST
+    - PATIENT
+    type: string
+    x-enum-varnames:
+    - RoleDentist
+    - RolePatient
   util.InvoiceType:
     enum:
     - SFA_CLINIC_COLLECTS
@@ -6480,6 +6502,11 @@ paths:
     get:
       consumes:
       - application/json
+      parameters:
+      - description: DENTIST or PATIENT
+        in: query
+        name: role
+        type: string
       produces:
       - application/json
       responses:

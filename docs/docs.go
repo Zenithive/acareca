@@ -4311,6 +4311,14 @@ const docTemplate = `{
                     "clinic-contact"
                 ],
                 "summary": "List all contacts for a clinic",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "DENTIST or PATIENT",
+                        "name": "role",
+                        "in": "query"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -13663,6 +13671,17 @@ const docTemplate = `{
                 "phone": {
                     "type": "string"
                 },
+                "role": {
+                    "enum": [
+                        "DENTIST",
+                        "PATIENT"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/util.ClinicContactPersonRole"
+                        }
+                    ]
+                },
                 "website": {
                     "type": "string"
                 }
@@ -13700,6 +13719,17 @@ const docTemplate = `{
                 },
                 "phone": {
                     "type": "string"
+                },
+                "role": {
+                    "enum": [
+                        "DENTIST",
+                        "PATIENT"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/util.ClinicContactPersonRole"
+                        }
+                    ]
                 },
                 "website": {
                     "type": "string"
@@ -13770,6 +13800,9 @@ const docTemplate = `{
                 },
                 "phone": {
                     "type": "string"
+                },
+                "role": {
+                    "$ref": "#/definitions/util.ClinicContactPersonRole"
                 },
                 "updated_at": {
                     "type": "string"
@@ -16369,6 +16402,17 @@ const docTemplate = `{
                 "ChannelInApp",
                 "ChannelPush",
                 "ChannelEmail"
+            ]
+        },
+        "util.ClinicContactPersonRole": {
+            "type": "string",
+            "enum": [
+                "DENTIST",
+                "PATIENT"
+            ],
+            "x-enum-varnames": [
+                "RoleDentist",
+                "RolePatient"
             ]
         },
         "util.InvoiceType": {
