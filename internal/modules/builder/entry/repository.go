@@ -594,7 +594,7 @@ func (r *Repository) ListCoaEntries(ctx context.Context, f common.Filter, actorI
 				OR
 				(v.form_field_id IS NULL AND fev.form_field_id IS NULL AND fev.coa_id = v.coa_id)
 			)
-    WHERE v.form_field_id IS NOT NULL` + permissionClause
+    WHERE 1=1` + permissionClause
 
 	searchCols := []string{"v.account_name", "v.account_code"}
 	q, qArgs := common.BuildQuery(base, f, allowedColumns, searchCols, false)
@@ -686,7 +686,7 @@ func (r *Repository) CountCoaEntries(ctx context.Context, f common.Filter, actor
 			OR
 			(v.form_field_id IS NULL AND fev.form_field_id IS NULL AND fev.coa_id = v.coa_id)
 		)
-    WHERE v.form_field_id IS NOT NULL` + permissionClause
+    WHERE 1=1` + permissionClause
 
 	searchCols := []string{"v.account_name", "v.account_code"}
 	q, qArgs := common.BuildQuery(base, f, allowedColumns, searchCols, true)
@@ -789,7 +789,7 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
             OR
             (v.form_field_id IS NULL AND fev.form_field_id IS NULL AND fev.coa_id = v.coa_id)
         )
-        WHERE v.account_name = ? AND v.form_field_id IS NOT NULL` + permissionClause
+        WHERE v.account_name = ? AND 1=1` + permissionClause
 
 	if f.SortBy == nil || *f.SortBy == "" {
 		defaultSort := "v.entry_date"
@@ -954,7 +954,7 @@ func (r *Repository) CountCoaEntryDetails(ctx context.Context, coaName string, f
             OR
             (v.form_field_id IS NULL AND fev.form_field_id IS NULL AND fev.coa_id = v.coa_id)
         )
-        WHERE v.account_name = ? AND v.form_field_id IS NOT NULL` + permissionClause
+        WHERE v.account_name = ? AND 1=1` + permissionClause
 
 	searchCols := []string{"v.account_name", "v.description"}
 	q, qArgs := common.BuildQuery(base, f, allowedColumns, searchCols, true)
