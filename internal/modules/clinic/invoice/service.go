@@ -6,9 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"strconv"
-	"strings"
-	"time"
 
 	"github.com/google/uuid"
 	clinicauth "github.com/iamarpitzala/acareca/internal/modules/clinic/auth"
@@ -41,6 +38,7 @@ type Service struct {
 	tplService template.IService
 	clinicSvc  clinicauth.Service
 	tplRepo    template.IRepository
+	itemRepo   item.IRepository
 }
 
 func NewService(db *sqlx.DB, repo IRepository, cfg *config.Config, tplService template.IService, clinicSvc clinicauth.Service, tplRepo template.IRepository) IService {
@@ -52,39 +50,40 @@ func NewService(db *sqlx.DB, repo IRepository, cfg *config.Config, tplService te
 		tplService: tplService,
 		clinicSvc:  clinicSvc,
 		tplRepo:    tplRepo,
+		itemRepo:   item.NewRepository(db),
 	}
 }
 
 func (s *Service) Create(ctx context.Context, invoice *RqInvoice) error {
+	if err := invoice.Validate(); err != nil {
+		return err
+	}
+
 	inv := invoice.ToInvoice()
 
 	if len(inv.Sections) == 0 {
-		currentYear := strconv.Itoa(time.Now().Year())
+		var cs section.CalculationStatement
 
-		docString, err := s.repo.GetNextSequenceForYear(ctx, "CS", currentYear)
-		if err != nil {
-			return fmt.Errorf("failed calculating consecutive invoice numbers: %w", err)
-		}
-
-		cs := section.CalculationStatement{
-			DocumentNumber: docString,
-			Entries:        []*item.Item{},
-		}
-
-		built, err := cs.Build(ctx, &inv.ID, docString)
+		built, err := cs.Build(ctx, &inv.ID)
 		if err != nil {
 			return err
 		}
 		inv.Sections = []section.Section{built}
 	}
 
-	itemRepo := item.NewRepository(s.db)
-	allEntries := make([]*item.Item, 0)
-	for i := range inv.Sections {
-		allEntries = append(allEntries, inv.Sections[i].Entries...)
+	sections := make([]section.Section, 0, len(invoice.Sections))
+	for _, rqSec := range invoice.Sections {
+		sec := rqSec.ToSection()
+		sections = append(sections, *sec)
 	}
+
+	allEntries := make([]*item.Item, 0)
+	for _, section := range sections {
+		allEntries = append(allEntries, section.Entries...)
+	}
+
 	if len(allEntries) > 0 {
-		if err := itemRepo.EvaluateFormulas(ctx, allEntries); err != nil {
+		if err := s.itemRepo.EvaluateFormulas(ctx, allEntries); err != nil {
 			return fmt.Errorf("formula evaluation failed: %w", err)
 		}
 	}
@@ -135,17 +134,16 @@ func (s *Service) List(ctx context.Context, filter *Filter) (*util.RsList, error
 		rsInvoices = append(rsInvoices, invoice.ToRsInvoiceSummary())
 	}
 
-	page := 1
-	if ft.Offset != nil && ft.Limit != nil && *ft.Limit > 0 {
-		page = (*ft.Offset / *ft.Limit) + 1
-	}
-
 	var rsList util.RsList
-	rsList.MapToList(rsInvoices, int(total), page, *ft.Limit)
+	rsList.MapToList(rsInvoices, int(total), *filter.Offset, *filter.Limit)
 	return &rsList, nil
 }
 
 func (s *Service) Update(ctx context.Context, invoice *RqUpdateInvoice) error {
+	if err := invoice.Validate(); err != nil {
+		return err
+	}
+
 	existing, err := s.repo.GetByID(ctx, s.db, *invoice.ID)
 	if err != nil {
 		return err
@@ -153,7 +151,7 @@ func (s *Service) Update(ctx context.Context, invoice *RqUpdateInvoice) error {
 
 	updatedInvoice := invoice.ApplyToInvoice(existing)
 
-	sections := make([]section.Section, 0)
+	sections := make([]section.Section, 0, len(invoice.Sections))
 	deleteItemIDs := make(map[uuid.UUID][]uuid.UUID)
 
 	for _, rqSec := range invoice.Sections {
@@ -230,19 +228,7 @@ func (s *Service) ResendInvoiceEmail(ctx context.Context, id uuid.UUID) error {
 
 	var documentNumber string
 	for _, sec := range rsInvoice.Sections {
-		if strings.ToUpper(strings.TrimSpace(string(sec.SectionType))) == "CALCULATION_STATEMENT" && sec.DocumentNumber != "" {
-			documentNumber = sec.DocumentNumber
-			break
-		}
-	}
-
-	// Fallback if Calculation Statement is unpopulated
-	if documentNumber == "" {
-		if len(rsInvoice.Sections) > 0 && rsInvoice.Sections[0].DocumentNumber != "" {
-			documentNumber = rsInvoice.Sections[0].DocumentNumber
-		} else {
-			documentNumber = rsInvoice.ID.String()[:8]
-		}
+		documentNumber = sec.DocumentNumber
 	}
 
 	subject, htmlBody := mail.RenderTemplateReplacements(chosenSubject, chosenBody, name, documentNumber)

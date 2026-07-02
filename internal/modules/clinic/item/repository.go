@@ -35,7 +35,7 @@ func (r *Repository) Create(ctx context.Context, tx *sqlx.Tx, invoiceID uuid.UUI
 		if item.ID == uuid.Nil {
 			item.ID = uuid.New()
 		}
-		if err := r.persistItem(ctx, tx, item, false, invoiceID); err != nil {
+		if err := r.persistItem(ctx, tx, item, false); err != nil {
 			return err
 		}
 	}
@@ -109,7 +109,7 @@ func (r *Repository) Update(ctx context.Context, tx *sqlx.Tx, invoiceID uuid.UUI
 		if item.ID == uuid.Nil {
 			item.ID = uuid.New()
 		}
-		if err := r.persistItem(ctx, tx, item, true, invoiceID); err != nil {
+		if err := r.persistItem(ctx, tx, item, true); err != nil {
 			return err
 		}
 	}
@@ -155,7 +155,7 @@ func (r *Repository) UpsertItems(ctx context.Context, tx *sqlx.Tx, invoiceID uui
 			}
 		}
 
-		if err := r.persistItem(ctx, tx, item, exists, invoiceID); err != nil {
+		if err := r.persistItem(ctx, tx, item, exists); err != nil {
 			return err
 		}
 	}
@@ -164,7 +164,7 @@ func (r *Repository) UpsertItems(ctx context.Context, tx *sqlx.Tx, invoiceID uui
 }
 
 // persistItem inserts or updates a single item based on isUpdate flag
-func (r *Repository) persistItem(ctx context.Context, tx *sqlx.Tx, item *Item, isUpdate bool, invoiceID uuid.UUID) error {
+func (r *Repository) persistItem(ctx context.Context, tx *sqlx.Tx, item *Item, isUpdate bool) error {
 	var exprJSON []byte
 	var err error
 	if item.Expression != nil {

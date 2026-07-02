@@ -233,9 +233,10 @@ func ApplyPDFCollections(data *InvoiceData, items []InvoiceItem, sections []Invo
 			if item.IsFinal {
 				data.GrandTotal = item.Amount
 			} else {
-				if sfaItemIndex == 0 {
+				switch sfaItemIndex {
+				case 0:
 					data.Subtotal = item.Amount
-				} else if sfaItemIndex == 1 {
+				case 1:
 					data.TaxTotal = item.Amount
 				}
 				sfaItemIndex++
