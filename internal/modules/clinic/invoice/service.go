@@ -77,9 +77,10 @@ func (s *Service) Create(ctx context.Context, invoice *RqInvoice) error {
 		sections = append(sections, *sec)
 	}
 
+	// Flatten all entries (including nested children) for formula evaluation
 	allEntries := make([]*item.Item, 0)
 	for _, section := range sections {
-		allEntries = append(allEntries, section.Entries...)
+		allEntries = append(allEntries, s.flattenEntries(section.Entries)...)
 	}
 
 	if len(allEntries) > 0 {
@@ -103,6 +104,18 @@ func (s *Service) Create(ctx context.Context, invoice *RqInvoice) error {
 	}
 
 	return nil
+}
+
+// flattenEntries recursively flattens nested item structures into a flat slice
+func (s *Service) flattenEntries(entries []*item.Item) []*item.Item {
+	result := make([]*item.Item, 0)
+	for _, entry := range entries {
+		result = append(result, entry)
+		if len(entry.Children) > 0 {
+			result = append(result, s.flattenEntries(entry.Children)...)
+		}
+	}
+	return result
 }
 
 // Delete implements [IService].
@@ -171,6 +184,18 @@ func (s *Service) Update(ctx context.Context, invoice *RqUpdateInvoice) error {
 
 		if len(rqSec.DeleteEntries) > 0 {
 			deleteItemIDs[sec.ID] = rqSec.DeleteEntries
+		}
+	}
+
+	// Flatten all entries (including nested children) for formula evaluation
+	allEntries := make([]*item.Item, 0)
+	for _, section := range sections {
+		allEntries = append(allEntries, s.flattenEntries(section.Entries)...)
+	}
+
+	if len(allEntries) > 0 {
+		if err := s.itemRepo.EvaluateFormulas(ctx, allEntries); err != nil {
+			return fmt.Errorf("formula evaluation failed: %w", err)
 		}
 	}
 
