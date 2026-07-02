@@ -134,8 +134,18 @@ func (s *Service) List(ctx context.Context, filter *Filter) (*util.RsList, error
 		rsInvoices = append(rsInvoices, invoice.ToRsInvoiceSummary())
 	}
 
+	defaultLimit := 10
+	defaultOffset := 0
+
+	if filter.Limit != nil {
+		defaultLimit = *filter.Limit
+	}
+	if filter.Offset != nil {
+		defaultOffset = *filter.Offset
+	}
+
 	var rsList util.RsList
-	rsList.MapToList(rsInvoices, int(total), *filter.Offset, *filter.Limit)
+	rsList.MapToList(rsInvoices, int(total), defaultOffset, defaultLimit)
 	return &rsList, nil
 }
 
