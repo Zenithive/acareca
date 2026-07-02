@@ -318,7 +318,7 @@ body .payment-details-table-striped tr:nth-child(even) {
 
 func DefaultTemplates() []RqGlobalTemplate {
 	calculationPreparedFor := `<div class="address-banner-box"><div class="banner-label">PREPARED FOR</div><div class="recipient-name">{{bill_to.name}}</div>{{#if bill_to.address}}<p class="recipient-line">{{bill_to.address}}</p>{{/if}}{{#if bill_to.abn}}<p class="recipient-line">ABN {{bill_to.abn}}</p>{{/if}}</div>`
-	taxInvoiceBillTo := `<div class="address-banner-box"><div class="banner-label">BILL TO</div><div class="recipient-name">{{bill_to.name}}</div>{{#if bill_to.address}}<p class="recipient-line">{{bill_to.address}}</p>{{/if}}{{#if bill_to.abn}}<p class="recipient-line">ABN {{bill_to.abn}}</p>{{/if}}</div>`
+	taxInvoiceBillTo := `<div class="address-banner-box"><div class="banner-label">{{#if is_method_c}}SUPPLIER (DENTIST){{else}}BILL TO{{/if}}</div><div class="recipient-name">{{bill_to.name}}</div>{{#if bill_to.address}}<p class="recipient-line">{{bill_to.address}}</p>{{/if}}{{#if bill_to.abn}}<p class="recipient-line">ABN {{bill_to.abn}}</p>{{/if}}{{#if is_method_c}}<p class="recipient-line" style="margin-top: 4px; font-size: 10px; font-style: italic;">Recipient: {{bill_from.name}} ABN {{bill_from.abn}}<br>Issued by the recipient under an RCTI agreement between the parties.</p>{{/if}}</div>`
 	remittancePayee := `<div class="address-banner-box"><div class="banner-label">PAYEE</div><div class="recipient-name">{{bill_to.name}}</div>{{#if bill_to.address}}<p class="recipient-line">{{bill_to.address}}</p>{{/if}}{{#if bill_to.abn}}<p class="recipient-line">ABN {{bill_to.abn}}</p>{{/if}}</div>`
 
 	return []RqGlobalTemplate{
@@ -331,7 +331,7 @@ func DefaultTemplates() []RqGlobalTemplate {
   <table class="data-table">
     <thead>
       <tr>
-        <th style="width: 65%%; text-align: left;">1. PATIENT FEES COLLECTED ON YOUR BEHALF</th>
+        <th style="width: 65%%; text-align: left;">{{#if is_method_b}}1. PATIENT FEES{{else}}1. PATIENT FEES COLLECTED ON YOUR BEHALF{{/if}}</th>
         <th style="width: 20%%; text-align: right;">Amount</th>
         <th style="width: 15%%; text-align: center;">BAS Code</th>
       </tr>
@@ -350,7 +350,7 @@ func DefaultTemplates() []RqGlobalTemplate {
   <table class="data-table">
     <thead>
       <tr>
-        <th style="width: 65%%; text-align: left;">2. SERVICE &amp; FACILITY FEE</th>
+        <th style="width: 65%%; text-align: left;">{{#if is_method_c}}2. DENTIST COMMISSION (Independent Contractor){{else}}2. SERVICE &amp; FACILITY FEE{{/if}}</th>
         <th style="width: 20%%; text-align: right;">Amount</th>
         <th style="width: 15%%; text-align: center;">BAS Code</th>
       </tr>
@@ -363,7 +363,7 @@ func DefaultTemplates() []RqGlobalTemplate {
               <td style="padding: 0; color: black; width: 65%%; vertical-align: middle;">
                 {{service_fee_rate_intro.label}}
                 <span style="float: right; font-weight: bold; white-space: nowrap; margin-left: 8px;">
-                  Fee rate&nbsp;
+                  {{#if is_method_c}}Commission rate{{else}}Fee rate{{/if}}&nbsp;
                   <span class="txt-blue-val">{{service_fee_rate_intro.fee_rate_display}}</span>
                 </span>
               </td>
@@ -371,13 +371,15 @@ func DefaultTemplates() []RqGlobalTemplate {
               <td style="width: 15%%; padding: 0;"></td>
             </tr>
           </table>
-          {{#if service_description_items}}
-          <ol style="margin: 6px 0 0 18px; padding: 0; list-style-type: decimal; font-size: 11px; line-height: 1.5; color: var(--text-dark);">
-            {{#each service_description_items}}
-            <li style="margin-bottom: 2px;">{{this}}</li>
-            {{/each}}
-          </ol>
-          {{/if}}
+          {{#unless is_method_c}}
+            {{#if service_description_items}}
+            <ol style="margin: 6px 0 0 18px; padding: 0; list-style-type: decimal; font-size: 11px; line-height: 1.5; color: var(--text-dark);">
+              {{#each service_description_items}}
+              <li style="margin-bottom: 2px;">{{this}}</li>
+              {{/each}}
+            </ol>
+            {{/if}}
+          {{/unless}}
         </td>
       </tr>
       {{#each service_fee_items}}
@@ -432,7 +434,7 @@ func DefaultTemplates() []RqGlobalTemplate {
   <table class="data-table" style="margin-top: 4px;">
     <thead>
       <tr>
-        <th style="width: 65%%; text-align: left;">SERVICE &amp; FACILITY FEE</th>
+        <th style="width: 65%%; text-align: left;">{{#if is_method_c}}DENTAL SERVICES SUPPLIED - COMMISSION{{else}}SERVICE &amp; FACILITY FEE{{/if}}</th>
         <th style="width: 20%%; text-align: right;">Amount</th>
         <th style="width: 15%%; text-align: center;">BAS Code</th>
       </tr>
@@ -443,23 +445,29 @@ func DefaultTemplates() []RqGlobalTemplate {
           <table class="layout-table" style="width: 100%%; border-collapse: collapse;">
             <tr>
               <td style="padding: 0; color: var(--text-dark); width: 65%%; vertical-align: middle;">
+                {{#if is_method_c}}
+                Professional dental services for the period {{billing_period}}, remunerated at the agreed commission rate on net patient fees.
+                {{else}}
                 {{service_fee_rate_intro.label}}
                 <span style="float: right; font-weight: bold; white-space: nowrap; margin-left: 8px;">
                   Fee rate&nbsp;
                   <span class="txt-blue-val">{{service_fee_rate_intro.fee_rate_display}}</span>
                 </span>
+                {{/if}}
               </td>
               <td style="width: 20%%; padding: 0;"></td>
               <td style="width: 15%%; padding: 0;"></td>
             </tr>
           </table>
-          {{#if service_description_items}}
-          <ol style="margin: 6px 0 0 18px; padding: 0; list-style-type: decimal; font-size: 11px; line-height: 1.5; color: var(--text-dark);">
-            {{#each service_description_items}}
-            <li style="margin-bottom: 2px;">{{this}}</li>
-            {{/each}}
-          </ol>
-          {{/if}}
+          {{#unless is_method_c}}
+            {{#if service_description_items}}
+            <ol style="margin: 6px 0 0 18px; padding: 0; list-style-type: decimal; font-size: 11px; line-height: 1.5; color: var(--text-dark);">
+              {{#each service_description_items}}
+              <li style="margin-bottom: 2px;">{{this}}</li>
+              {{/each}}
+            </ol>
+            {{/if}}
+          {{/unless}}
         </td>
       </tr>
       
@@ -475,8 +483,34 @@ func DefaultTemplates() []RqGlobalTemplate {
 
   <table class="layout-table" style="margin-top: 4px;">
     <tr>
-      <td style="width: 50%%;"></td>
-      <td style="width: 50%%; padding: 0;">
+      <td style="width: 50%%;">
+        {{#if is_method_b}}
+        <div class="payment-details-container" style="margin-top: 0px;">
+          <div class="payment-details-header">PAYMENT DETAILS - PAY TO CLINIC</div>
+          <table class="payment-details-table payment-details-table-bordered" style="width: 100%%; border-collapse: collapse;">
+            <tbody>
+              <tr>
+                <td style="font-weight: bold; width: 40%%;">Account</td>
+                <td style="width: 60%%;">{{bill_from.name}}</td>
+              </tr>
+              <tr>
+                <td style="font-weight: bold;">BSB / Acc No.</td>
+                <td>{{#if clinic_payment_details}}{{clinic_payment_details}}{{else}}083-000 / 98765432{{/if}}</td>
+              </tr>
+              <tr>
+                <td style="font-weight: bold;">Due Date</td>
+                <td>14 days from issue</td>
+              </tr>
+              <tr>
+                <td style="font-weight: bold;">Reference</td>
+                <td>{{invoice_number}}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        {{/if}}
+      </td>
+      <td style="width: 50%%; padding: 0; vertical-align: top;">
         <table class="layout-table" style="font-size: 11px; line-height: 1.6;">
           <tr>
             <td style="padding: 3px 6px; text-align: left;">Subtotal (excl. GST)</td>
@@ -497,25 +531,33 @@ func DefaultTemplates() []RqGlobalTemplate {
 
  {{#if payment_terms}}
   <div class="footer-notes-box" style="margin-top: 24px;">
-    <p style="font-style: italic;>Payment terms:{{payment_terms}}</p>
+    <p style="font-style: italic;">Payment terms: {{payment_terms}}</p>
   </div>
   {{else if template_settings.payment_terms}}
   <div class="footer-notes-box" style="margin-top: 24px;">
-    <p style="font-style: italic;>Payment terms: {{template_settings.payment_terms}}</p>
+    <p style="font-style: italic;">Payment terms: {{template_settings.payment_terms}}</p>
   </div>
   {{else}}
   <div class="footer-notes-box" style="margin-top: 24px;">
-    <p style="font-style: italic; margin-bottom: 4px;">Payment terms: This invoice is settled by offset against patient fees collected on your behalf. No payment is required—refer to the attached Remittance Advice for the net amount payable to you.</p>
+    <p style="font-style: italic; margin-bottom: 4px;">
+      {{#if is_method_b}}
+      Patient fees for the period were collected directly by the dentist. This tax invoice is the clinic's service &amp; facility fee (plus any costs paid by the clinic) and is payable by the dentist to the clinic at the account above.
+      {{else if is_method_c}}
+      This RCTI is created by the clinic (recipient) on behalf of the dentist (supplier). The dentist must not issue a separate tax invoice for this supply. See Remittance Advice for the net amount paid.
+      {{else}}
+      Payment terms: This invoice is settled by offset against patient fees collected on your behalf. No payment is required—refer to the attached Remittance Advice for the net amount payable to you.
+      {{/if}}
+    </p>
   </div>
   {{/if}}
-</div>`, defaultTemplateHeader("TAX INVOICE", "Invoice No.", taxInvoiceBillTo)),
+</div>`, defaultTemplateHeader("{{#if is_method_c}}RECIPIENT CREATED TAX INVOICE{{else}}TAX INVOICE{{/if}}", "{{#if is_method_c}}RCTI No.{{else}}Invoice No.{{/if}}", taxInvoiceBillTo)),
 			Css: sharedCSS(),
 		},
 		{
 			Name:      "Remittance Advice",
 			IsDefault: false,
 			IsActive:  true,
-			Html: fmt.Sprintf(`<div class="invoice-page"><div style="display: block; width: 100%%;">%s</div>
+			Html: fmt.Sprintf(`{{#unless is_method_b}}<div class="invoice-page"><div style="display: block; width: 100%%;">%s</div>
 
   <table class="data-table">
     <thead>
@@ -565,9 +607,9 @@ func DefaultTemplates() []RqGlobalTemplate {
   </div>
 
     <div class="footer-notes-box">
-  <p style="text-transform: lowercase; font-style: italic;"><span style="text-transform: none; font-style: italic;">This remittance advice is issued</span> {{invoice_frequency}} <span style="text-transform: none; font-style: italic;">together with the Calculation Statement (page 1) and Tax Invoice (page 2).Please retain for your records and provide to your accountant at year end.</span></p>
+  <p style="text-transform: lowercase; font-style: italic;"><span style="text-transform: none; font-style: italic;">This remittance advice is issued</span> {{invoice_frequency}} <span style="text-transform: none; font-style: italic;">together with the Calculation Statement (page 1) and {{#if is_method_c}}RCTI (page 2){{else}}Tax Invoice (page 2){{/if}}. Please retain for your records and provide to your accountant at year end.</span></p>
   </div>
-</div>`, defaultTemplateHeader("REMITTANCE ADVICE", "Reference", remittancePayee)),
+</div>{{/unless}}`, defaultTemplateHeader("REMITTANCE ADVICE", "Reference", remittancePayee)),
 			Css: sharedCSS(),
 		},
 	}
@@ -580,21 +622,17 @@ func DefaultSettings(templateId uuid.UUID) Setting {
 	tableStyle := "simple"
 
 	return Setting{
-		TemplateId:       templateId,
-		MappingId:        nil,
+		InvoiceId:        nil,
 		PrimaryColor:     "#1f4e5f",
 		AccentColor:      "#5f96b4",
 		BodyFontFamily:   "Arial",
 		HeaderFontFamily: "Arial",
 		IsLogo:           true,
 		LogoId:           nil,
-		LetterHeadId:     nil,
-		FooterId:         nil,
 		TermText:         &termText,
 		PaymentTerms:     &paymentTerms,
 		IsWaterMark:      false,
 		WaterMarkText:    &waterMarkText,
-		IsTax:            true,
 		TableStyle:       &tableStyle,
 	}
 }

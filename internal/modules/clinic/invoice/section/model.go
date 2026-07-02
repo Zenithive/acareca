@@ -5,6 +5,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/item"
+	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
 
 // TaxMethod represents the tax calculation method
@@ -21,15 +22,16 @@ type SectionType string
 
 const (
 	CALCULATIONSTATEMENT SectionType = "CALCULATION_STATEMENT"
-	SFAINVOICE           SectionType = "SFA_INVOICE"
-	REMITTANCEINVOICE    SectionType = "REMITTANCE_INVOICE"
+	TAXINVOICE           SectionType = "TAX_INVOICE"
+	REMITTANCEINVOICE    SectionType = "REMITTANCE_ADVICE"
+	RCTI                 SectionType = "RCTI"
 )
 
 // RqSection represents the request payload for creating a section
 type RqSection struct {
 	InvoiceID        *uuid.UUID      `json:"invoiceId,omitempty"`
 	TemplateID       uuid.UUID       `json:"templateId,omitempty"`
-	SectionType      SectionType     `json:"sectionType" validate:"required,oneof=CALCULATION_STATEMENT SFA_INVOICE REMITTANCE_INVOICE"`
+	SectionType      SectionType     `json:"sectionType" `
 	DocumentNumber   string          `json:"documentNumber" validate:"required"`
 	TaxMethod        *TaxMethod      `json:"taxMethod,omitempty" validate:"omitempty,oneof=INCLUSIVE EXCLUSIVE NO_TAX"`
 	PaymentMethod    *string         `json:"paymentMethod,omitempty"`
@@ -46,7 +48,7 @@ type RqUpdateSection struct {
 	ID               *uuid.UUID            `json:"id,omitempty"`
 	InvoiceID        *uuid.UUID            `json:"invoiceId,omitempty"`
 	TemplateID       *uuid.UUID            `json:"templateId,omitempty"`
-	SectionType      *SectionType          `json:"SectionType,omitempty" validate:"omitempty,oneof=CALCULATION_STATEMENT SFA_INVOICE REMITTANCE_INVOICE"`
+	SectionType      *SectionType          `json:"SectionType,omitempty"`
 	DocumentNumber   *string               `json:"documentNumber,omitempty"`
 	TaxMethod        *TaxMethod            `json:"taxMethod,omitempty" validate:"omitempty,oneof=INCLUSIVE EXCLUSIVE NO_TAX"`
 	PaymentMethod    *string               `json:"paymentMethod,omitempty"`
@@ -69,7 +71,6 @@ func (rq *RqSection) ToSection() *Section {
 	return &Section{
 		ID:               uuid.New(),
 		InvoiceID:        rq.InvoiceID,
-		TemplateID:       rq.TemplateID,
 		InvoiceSection:   rq.SectionType,
 		DocumentNumber:   rq.DocumentNumber,
 		TaxMethod:        rq.TaxMethod,
@@ -95,10 +96,6 @@ func (rq *RqUpdateSection) ToSection() *Section {
 
 	if rq.InvoiceID != nil {
 		section.InvoiceID = rq.InvoiceID
-	}
-
-	if rq.TemplateID != nil {
-		section.TemplateID = *rq.TemplateID
 	}
 
 	if rq.SectionType != nil {
@@ -164,7 +161,6 @@ func (rq *RqUpdateSection) ToSection() *Section {
 type Section struct {
 	ID               uuid.UUID    `db:"id"`
 	InvoiceID        *uuid.UUID   `db:"invoice_id"`
-	TemplateID       uuid.UUID    `db:"template_id"`
 	InvoiceSection   SectionType  `db:"invoice_section"`
 	DocumentNumber   string       `db:"document_number"`
 	TaxMethod        *TaxMethod   `db:"tax_method"`
@@ -190,7 +186,6 @@ func (s *Section) ToRsSection() *RsSection {
 	return &RsSection{
 		ID:               s.ID,
 		InvoiceID:        s.InvoiceID,
-		TemplateID:       s.TemplateID,
 		SectionType:      s.InvoiceSection,
 		DocumentNumber:   s.DocumentNumber,
 		TaxMethod:        s.TaxMethod,
@@ -225,7 +220,7 @@ type RsSection struct {
 	UpdatedAt        *time.Time      `json:"updatedAt"`
 }
 
-type CalculationStatement struct {
+type DocumentBase struct {
 	DocumentNumber   string
 	TaxMethod        *TaxMethod
 	PaymentMethod    *string
@@ -235,28 +230,23 @@ type CalculationStatement struct {
 	PaymentDate      *string
 	PaymentReference *string
 	Entries          []*item.Item
+}
+
+type CalculationStatement struct {
+	DocumentBase
 }
 
 type SfaInvoice struct {
-	DocumentNumber   string
-	TaxMethod        *TaxMethod
-	PaymentMethod    *string
-	AccountName      *string
-	Bsb              *string
-	AccountNumber    *string
-	PaymentDate      *string
-	PaymentReference *string
-	Entries          []*item.Item
+	DocumentBase
+	InvoiceMethod util.InvoiceType
+}
+
+type RctiInvoice struct {
+	DocumentBase
+	CommissionRate float64
 }
 
 type RemittanceInvoice struct {
-	DocumentNumber   string
-	TaxMethod        *TaxMethod
-	PaymentMethod    *string
-	AccountName      *string
-	Bsb              *string
-	AccountNumber    *string
-	PaymentDate      *string
-	PaymentReference *string
-	Entries          []*item.Item
+	DocumentBase
+	InvoiceMethod util.InvoiceType
 }
