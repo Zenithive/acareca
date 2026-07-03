@@ -9,6 +9,13 @@ const (
 	CREDIT EntryType = "CREDIT"
 )
 
+type PaidBy string
+
+const (
+	Dentist EntryType = "Dentist"
+	Clinic  EntryType = "Clinic"
+)
+
 type BasCode string
 
 const (
@@ -33,6 +40,7 @@ type RqEntry struct {
 	IsFinal          bool        `json:"isFinal"`
 	Children         []*RqEntry  `json:"children,omitempty" validate:"omitempty,dive"`
 	ParentID         *uuid.UUID  `json:"parentId,omitempty"`
+	PaidBy           *PaidBy     `json:"paidBy,omitempty"`
 }
 
 func (r *RqEntry) ToItem() *Item {
@@ -68,23 +76,25 @@ func (r *RqEntry) ToItem() *Item {
 		IsFinal:          r.IsFinal,
 		Children:         children,
 		ParentID:         r.ParentID,
+		PaidBy:           r.PaidBy,
 	}
 }
 
 type RqUpdateEntry struct {
-	ID               *uuid.UUID        `json:"id,omitempty"`
-	Name             *string           `json:"name,omitempty"`
-	Description      *string           `json:"description,omitempty"`
-	EntryType        *EntryType        `json:"entryType,omitempty"`
-	BASCode          *BasCode          `json:"basCode,omitempty"`
-	FieldKey         *string           `json:"fieldKey,omitempty"`
-	Amount           *float64          `json:"amount,omitempty"`
-	SortOrder        *int              `json:"sortOrder,omitempty"`
-	Expression       interface{}       `json:"expression,omitempty"`
-	InvoiceSectionID *uuid.UUID        `json:"invoiceSectionId,omitempty"`
-	IsFinal          *bool             `json:"isFinal,omitempty"`
-	Children         []*RqUpdateEntry  `json:"children,omitempty" validate:"omitempty,dive"`
-	ParentID         *uuid.UUID        `json:"parentId,omitempty"`
+	ID               *uuid.UUID       `json:"id,omitempty"`
+	Name             *string          `json:"name,omitempty"`
+	Description      *string          `json:"description,omitempty"`
+	EntryType        *EntryType       `json:"entryType,omitempty"`
+	BASCode          *BasCode         `json:"basCode,omitempty"`
+	FieldKey         *string          `json:"fieldKey,omitempty"`
+	Amount           *float64         `json:"amount,omitempty"`
+	SortOrder        *int             `json:"sortOrder,omitempty"`
+	Expression       interface{}      `json:"expression,omitempty"`
+	InvoiceSectionID *uuid.UUID       `json:"invoiceSectionId,omitempty"`
+	IsFinal          *bool            `json:"isFinal,omitempty"`
+	Children         []*RqUpdateEntry `json:"children,omitempty" validate:"omitempty,dive"`
+	ParentID         *uuid.UUID       `json:"parentId,omitempty"`
+	PaidBy           *PaidBy          `json:"paidBy,omitempty"`
 }
 
 func (r *RqUpdateEntry) ApplyToItem(item *Item) *Item {
@@ -143,6 +153,10 @@ func (r *RqUpdateEntry) ApplyToItem(item *Item) *Item {
 		item.Children = children
 	}
 
+	if r.PaidBy != nil {
+		item.PaidBy = r.PaidBy
+	}
+
 	return item
 }
 
@@ -161,6 +175,7 @@ type Item struct {
 	IsFinal          bool        `db:"is_final"`
 	Children         []*Item     `db:"-"`
 	ParentID         *uuid.UUID  `db:"parent_id,omitempty"`
+	PaidBy           *PaidBy     `db:"paid_by,omitempty"`
 }
 
 func (i *Item) ToRsEntry() *RsEntry {
@@ -188,6 +203,7 @@ func (i *Item) ToRsEntry() *RsEntry {
 		IsFinal:          i.IsFinal,
 		Children:         children,
 		ParentID:         i.ParentID,
+		PaidBy:           i.PaidBy,
 	}
 }
 
@@ -205,4 +221,5 @@ type RsEntry struct {
 	IsFinal          bool        `json:"isFinal"`
 	Children         []*RsEntry  `json:"children,omitempty"`
 	ParentID         *uuid.UUID  `json:"parentId,omitempty"`
+	PaidBy           *PaidBy     `json:"paidBy,omitempty"`
 }

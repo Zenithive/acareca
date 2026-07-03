@@ -44,7 +44,7 @@ func (r *Repository) createItemRecursive(ctx context.Context, tx *sqlx.Tx, item 
 	if item.ID == uuid.Nil {
 		item.ID = uuid.New()
 	}
-	
+
 	if err := r.persistItem(ctx, tx, item, false); err != nil {
 		return err
 	}
@@ -81,7 +81,8 @@ func (r *Repository) GetByInvoiceID(ctx context.Context, db *sqlx.DB, invoiceID 
 			field_key,
 			expression,
 			is_final,
-			parent_id
+			parent_id,
+			paid_by
 		FROM tbl_invoice_item
 		WHERE invoice_section_id IN (
 			SELECT id FROM tbl_map_invoice_section WHERE invoice_id = $1 AND deleted_at IS NULL
@@ -113,6 +114,7 @@ func (r *Repository) GetByInvoiceID(ctx context.Context, db *sqlx.DB, invoiceID 
 			&exprJSON,
 			&invoiceItem.IsFinal,
 			&invoiceItem.ParentID,
+			&invoiceItem.PaidBy,
 		); err != nil {
 			return nil, err
 		}
@@ -224,20 +226,20 @@ func (r *Repository) persistItem(ctx context.Context, tx *sqlx.Tx, item *Item, i
 			UPDATE tbl_invoice_item
 			SET name = $2, description = $3, entry_type = $4, bas_code = $5,
 				field_key = $6, amount = $7, invoice_section_id = $8,
-				sort_order = $9, expression = $10, is_final = $11, parent_id = $12, updated_at = NOW()
+				sort_order = $9, expression = $10, is_final = $11, parent_id = $12, paid_by = $13,updated_at = NOW()
 			WHERE id = $1 AND deleted_at IS NULL
 		`, item.ID, item.Name, item.Description, item.EntryType, item.BASCode,
-			item.FieldKey, item.Amount, item.InvoiceSectionID, item.SortOrder, exprJSON, item.IsFinal, item.ParentID)
+			item.FieldKey, item.Amount, item.InvoiceSectionID, item.SortOrder, exprJSON, item.IsFinal, item.ParentID, item.PaidBy)
 		return err
 	}
 
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO tbl_invoice_item (
 			id, name, description, entry_type, bas_code, field_key,
-			amount, invoice_section_id, sort_order, expression, is_final, parent_id
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+			amount, invoice_section_id, sort_order, expression, is_final, parent_id, paid_by
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 	`, item.ID, item.Name, item.Description, item.EntryType, item.BASCode,
-		item.FieldKey, item.Amount, item.InvoiceSectionID, item.SortOrder, exprJSON, item.IsFinal, item.ParentID)
+		item.FieldKey, item.Amount, item.InvoiceSectionID, item.SortOrder, exprJSON, item.IsFinal, item.ParentID, item.PaidBy)
 	return err
 }
 
