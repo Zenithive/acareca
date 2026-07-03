@@ -320,17 +320,8 @@ func (s *service) Login(ctx context.Context, req *RqLogin) (*RsToken, error) {
 	if user.Role == util.RolePractitioner {
 		practitionerID, _ := uuid.Parse(entityID)
 		var currentStatus string
-		err := s.db.GetContext(ctx, &currentStatus,
+		err = s.db.GetContext(ctx, &currentStatus,
 			`SELECT subscription_status FROM tbl_practitioner WHERE id = $1 AND deleted_at IS NULL`, practitionerID)
-
-		if err == nil && currentStatus == util.SubscriptionStatusPending {
-			activeSub, err := s.userSubscriptionSvc.GetActiveSubscription(ctx, practitionerID)
-			if err == nil && activeSub != nil && activeSub.Status == userSubscription.StatusActive {
-				if updateErr := s.userSubscriptionRepo.MarkPractitionerSubscriptionComplete(ctx, practitionerID); updateErr == nil {
-					log.Printf("✅ Auto-updated subscription_status to COMPLETE for practitioner %s on login", practitionerID)
-				}
-			}
-		}
 	}
 
 	userIDStr := user.ID.String()
