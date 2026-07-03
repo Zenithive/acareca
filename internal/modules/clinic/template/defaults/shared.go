@@ -4,6 +4,109 @@
 // parent template package can import it without a cycle.
 package defaults
 
+// AddressBannerConfig defines configuration for address banner sections
+type AddressBannerConfig struct {
+	Label       string
+	NameField   string
+	AddressField string
+	ABNField    string
+}
+
+// DefaultPreparedForBanner returns the standard "PREPARED FOR" address banner
+func DefaultPreparedForBanner() string {
+	return AddressBanner(AddressBannerConfig{
+		Label:        "PREPARED FOR",
+		NameField:    "bill_to.name",
+		AddressField: "bill_to.address",
+		ABNField:     "bill_to.abn",
+	})
+}
+
+// DefaultBilledToBanner returns the standard "BILLED TO" address banner
+func DefaultBilledToBanner() string {
+	return AddressBanner(AddressBannerConfig{
+		Label:        "BILLED TO",
+		NameField:    "bill_to.name",
+		AddressField: "bill_to.address",
+		ABNField:     "bill_to.abn",
+	})
+}
+
+// AddressBanner generates an address banner HTML block with the given configuration
+func AddressBanner(cfg AddressBannerConfig) string {
+	return `<div class="address-banner-box"><div class="banner-label">` + cfg.Label + `</div><div class="recipient-name">{{` + cfg.NameField + `}}</div>{{#if ` + cfg.AddressField + `}}<p class="recipient-line">{{` + cfg.AddressField + `}}</p>{{/if}}{{#if ` + cfg.ABNField + `}}<p class="recipient-line">ABN {{` + cfg.ABNField + `}}</p>{{/if}}</div>`
+}
+
+// TableConfig defines configuration for data table sections
+type TableConfig struct {
+	Title         string
+	Columns       []TableColumn
+	ItemsVariable string
+}
+
+// TableColumn defines a column in a data table
+type TableColumn struct {
+	Header    string
+	Width     string
+	Align     string // left, right, center
+	FieldType string // text, amount, bas_code
+}
+
+// DataTable generates a standardized data table HTML structure
+func DataTable(cfg TableConfig) string {
+	html := `<table class="data-table">
+    <thead>
+      <tr>`
+	
+	for _, col := range cfg.Columns {
+		align := col.Align
+		if align == "" {
+			align = "left"
+		}
+		html += `
+        <th style="width: ` + col.Width + `; text-align: ` + align + `;">` + col.Header + `</th>`
+	}
+	
+	html += `
+      </tr>
+    </thead>
+    <tbody>
+      {{#each ` + cfg.ItemsVariable + `}}
+      <tr{{#if row_class}} class="{{row_class}}"{{/if}}>`
+	
+	for _, col := range cfg.Columns {
+		align := col.Align
+		if align == "" {
+			align = "left"
+		}
+		
+		var cellClass string
+		var cellContent string
+		
+		switch col.FieldType {
+		case "amount":
+			cellClass = ` class="num{{#if value_class}} {{value_class}}{{/if}}"`
+			cellContent = `{{format_table_amount this}}`
+		case "bas_code":
+			cellClass = ` class="center"`
+			cellContent = `{{bas_code}}`
+		default:
+			cellContent = `{{label}}`
+		}
+		
+		html += `
+        <td` + cellClass + `>` + cellContent + `</td>`
+	}
+	
+	html += `
+      </tr>
+      {{/each}}
+    </tbody>
+  </table>`
+	
+	return html
+}
+
 // Header returns the shared document header markup, parameterized by
 // title, the invoice-number label, and the address banner block.
 func Header(title, labelName, addressBannerHTML string) string {

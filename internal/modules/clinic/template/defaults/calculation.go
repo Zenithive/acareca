@@ -2,45 +2,9 @@ package defaults
 
 import "fmt"
 
-// calculationPreparedFor is the address banner specific to the Calculation Statement.
-const calculationPreparedFor = `<div class="address-banner-box"><div class="banner-label">PREPARED FOR</div><div class="recipient-name">{{bill_to.name}}</div>{{#if bill_to.address}}<p class="recipient-line">{{bill_to.address}}</p>{{/if}}{{#if bill_to.abn}}<p class="recipient-line">ABN {{bill_to.abn}}</p>{{/if}}</div>`
-
-// CalculationHTML returns the HTML body for the default Calculation Statement.
-// All method-a/b/c branching is resolved upstream into billing_method.* fields
-// (see BillingMethodView / resolveBillingMethod) — this template only reads
-// flat variables, no nested conditionals.
-func CalculationHTML() string {
-	return fmt.Sprintf(`<div class="invoice-page"><div style="display: block; width: 100%%;">%s</div>
-
-  <table class="data-table">
-    <thead>
-      <tr>
-        <th style="width: 65%%; text-align: left;">{{billing_method.patient_fees_label}}</th>
-        <th style="width: 20%%; text-align: right;">Amount</th>
-        <th style="width: 15%%; text-align: center;">BAS Code</th>
-      </tr>
-    </thead>
-    <tbody>
-      {{#each patient_fee_items}}
-      <tr{{#if row_class}} class="{{row_class}}"{{/if}}>
-        <td>{{label}}</td>
-        <td class="num{{#if value_class}} {{value_class}}{{/if}}">{{format_table_amount this}}</td>
-        <td class="center">{{bas_code}}</td>
-      </tr>
-      {{/each}}
-    </tbody>
-  </table>
-
-  <table class="data-table">
-    <thead>
-      <tr>
-        <th style="width: 65%%; text-align: left;">{{billing_method.service_fee_section_label}}</th>
-        <th style="width: 20%%; text-align: right;">Amount</th>
-        <th style="width: 15%%; text-align: center;">BAS Code</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr>
+// ServiceFeeIntroRowCalculation returns the service fee introduction row for Calculation Statement
+func ServiceFeeIntroRowCalculation() string {
+	return `<tr>
         <td colspan="3" style="border-bottom: none; padding-top: 5px; padding-bottom: 4px;">
           <table class="layout-table" style="width: 100%%; border-collapse: collapse;">
             <tr>
@@ -65,7 +29,59 @@ func CalculationHTML() string {
             {{/if}}
           {{/if}}
         </td>
+      </tr>`
+}
+
+// FooterNotesBox returns the footer notes section HTML
+func FooterNotesBox() string {
+	return `<div class="footer-notes-box">
+    <p style="font-style: italic; margin-bottom: 4px;{{#if footer_note}} font-style: normal;{{/if}}"><strong>Notes:</strong> {{footer_note}}</p>
+  </div>`
+}
+
+// CalculationHTML returns the HTML body for the default Calculation Statement.
+// All method-a/b/c branching is resolved upstream into billing_method.* fields
+// (see BillingMethodView / resolveBillingMethod) — this template only reads
+// flat variables, no nested conditionals.
+func CalculationHTML() string {
+	// Build patient fees table
+	patientFeesTable := DataTable(TableConfig{
+		Title:         "{{billing_method.patient_fees_label}}",
+		ItemsVariable: "patient_fee_items",
+		Columns: []TableColumn{
+			{Header: "{{billing_method.patient_fees_label}}", Width: "65%", Align: "left", FieldType: "text"},
+			{Header: "Amount", Width: "20%", Align: "right", FieldType: "amount"},
+			{Header: "BAS Code", Width: "15%", Align: "center", FieldType: "bas_code"},
+		},
+	})
+	
+	// Build settlement table
+	settlementTable := DataTable(TableConfig{
+		Title:         "3. NET SETTLEMENT",
+		ItemsVariable: "settlement_items",
+		Columns: []TableColumn{
+			{Header: "3. NET SETTLEMENT", Width: "65%", Align: "left", FieldType: "text"},
+			{Header: "Amount", Width: "20%", Align: "right", FieldType: "amount"},
+			{Header: "BAS Code", Width: "15%", Align: "center", FieldType: "bas_code"},
+		},
+	})
+	
+	return fmt.Sprintf(`<div class="invoice-page"><div style="display: block; width: 100%%;">%s</div>
+
+  %s
+
+  %s
+
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="width: 65%%; text-align: left;">{{billing_method.service_fee_section_label}}</th>
+        <th style="width: 20%%; text-align: right;">Amount</th>
+        <th style="width: 15%%; text-align: center;">BAS Code</th>
       </tr>
+    </thead>
+    <tbody>
+      %s
       {{#each service_fee_items}}
       <tr{{#if row_class}} class="{{row_class}}"{{/if}}>
         <td style="width: 65%%;">{{label}}</td>
@@ -76,27 +92,8 @@ func CalculationHTML() string {
     </tbody>
   </table>
 
-  <table class="data-table">
-    <thead>
-      <tr>
-        <th style="width: 65%%; text-align: left;">3. NET SETTLEMENT</th>
-        <th style="width: 20%%; text-align: right;">Amount</th>
-        <th style="width: 15%%; text-align: center;">BAS Code</th>
-      </tr>
-    </thead>
-    <tbody>
-      {{#each settlement_items}}
-      <tr{{#if row_class}} class="{{row_class}}"{{/if}}>
-        <td style="width: 65%%;">{{label}}</td>
-        <td class="num{{#if value_class}} {{value_class}}{{/if}}" style="width: 20%%;{{#if is_bold}} font-weight: bold;{{/if}}">{{#if is_negative}}({{format_currency amount}}){{else}}{{format_currency amount}}{{/if}}</td>
-        <td class="center" style="width: 15%%;">{{bas_code}}</td>
-      </tr>
-      {{/each}}
-    </tbody>
-  </table>
+  %s
 
-  <div class="footer-notes-box">
-    <p style="font-style: italic; margin-bottom: 4px;{{#if footer_note}} font-style: normal;{{/if}}"><strong>Notes:</strong> {{footer_note}}</p>
-  </div>
-</div>`, Header("CALCULATION STATEMENT", "Statement No.", calculationPreparedFor))
+  %s
+</div>`, Header("CALCULATION STATEMENT", "Statement No.", DefaultPreparedForBanner()), patientFeesTable, ServiceFeeIntroRowCalculation(), settlementTable, FooterNotesBox())
 }
