@@ -5,7 +5,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/template"
-	"github.com/iamarpitzala/acareca/internal/modules/clinic/template/rendering"
+	"github.com/iamarpitzala/acareca/internal/modules/clinic/template/render"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/template/repository"
 	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
@@ -29,7 +29,7 @@ func NewCompositeService(cfg *config.Config, templateRepo repository.ITemplateRe
 
 	templateSvc := NewTemplateService(templRepo, encryptionSvc, settingSvc)
 
-	renderer := rendering.NewChromeRenderer()
+	renderer := render.NewChromeRenderer()
 	pdfSvc := NewPDFService(templRepo, setRepo, encryptionSvc, renderer, cfg)
 
 	syncSvc := NewSyncService(templRepo, setRepo, encryptionSvc)

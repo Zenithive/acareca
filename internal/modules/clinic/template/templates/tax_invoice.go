@@ -1,4 +1,4 @@
-package defaults
+package templates
 
 import "fmt"
 
@@ -43,4 +43,3 @@ func TaxInvoiceHTML() string {
   </div>
 </div>`, RCTIHeader(TaxInvoiceBillToBanner()), ServiceFeeIntroRow(), PaymentDetailsSection(), TaxSummarySection())
 }
-

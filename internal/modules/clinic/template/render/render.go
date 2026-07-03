@@ -1,4 +1,4 @@
-package rendering
+package render
 
 import (
 	"context"
@@ -21,7 +21,7 @@ type TemplateContent struct {
 func ValidateTemplateSize(html, css string) error {
 	const maxSize = 1024 * 1024 // 1 MB limit
 	size := len(html) + len(css)
-	
+
 	if size > maxSize {
 		return fmt.Errorf("template size %d exceeds limit %d", size, maxSize)
 	}

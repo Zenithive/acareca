@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/template"
+	"github.com/iamarpitzala/acareca/internal/modules/clinic/template/render"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/template/rendering"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/template/repository"
 	"github.com/iamarpitzala/acareca/internal/shared/common"
@@ -24,18 +25,18 @@ type PDFService struct {
 	templateRepo repository.ITemplateRepository
 	settingRepo  repository.ISettingRepository
 	encryption   IEncryptionService
-	renderer     rendering.IPDFRenderer
-	dataMapper   *rendering.DataMapper
+	renderer     render.IPDFRenderer
+	dataMapper   *render.DataMapper
 	cfg          *config.Config
 }
 
-func NewPDFService(templateRepo repository.ITemplateRepository, settingRepo repository.ISettingRepository, encryption IEncryptionService, renderer rendering.IPDFRenderer, cfg *config.Config) IPDF {
+func NewPDFService(templateRepo repository.ITemplateRepository, settingRepo repository.ISettingRepository, encryption IEncryptionService, renderer render.IPDFRenderer, cfg *config.Config) IPDF {
 	return &PDFService{
 		templateRepo: templateRepo,
 		settingRepo:  settingRepo,
 		encryption:   encryption,
 		renderer:     renderer,
-		dataMapper:   rendering.NewDataMapper(),
+		dataMapper:   render.NewDataMapper(),
 		cfg:          cfg,
 	}
 }

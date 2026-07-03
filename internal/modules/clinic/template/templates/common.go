@@ -2,7 +2,7 @@
 // built-in invoice document templates. This package is intentionally
 // dependency-free (no reference to template.RqGlobalTemplate) so the
 // parent template package can import it without a cycle.
-package defaults
+package templates
 
 // AddressBannerConfig defines configuration for address banner sections
 type AddressBannerConfig struct {

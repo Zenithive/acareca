@@ -1,4 +1,4 @@
-package defaults
+package templates
 
 // HelperScript returns the JS source for Handlebars.js helpers required
 // by these templates. Inject this into the chromedp page (or your Node

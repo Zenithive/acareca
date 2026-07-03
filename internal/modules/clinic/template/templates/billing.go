@@ -1,4 +1,4 @@
-package defaults
+package templates
 
 // BillingMethod represents the type of billing arrangement
 type BillingMethod string

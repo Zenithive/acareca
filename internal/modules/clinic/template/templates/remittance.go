@@ -1,4 +1,4 @@
-package defaults
+package templates
 
 import "fmt"
 
@@ -16,7 +16,7 @@ func RemittanceHTML() string {
 			{Header: "BAS Code", Width: "15%", Align: "center", FieldType: "bas_code"},
 		},
 	})
-	
+
 	return fmt.Sprintf(`{{#if billing_method.show_remittance}}<div class="invoice-page"><div style="display: block; width: 100%%;">%s</div>
 
   %s
