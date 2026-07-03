@@ -41,6 +41,6 @@ func TaxInvoiceHTML() string {
   <div class="footer-notes-box" style="margin-top: 24px;">
     <p style="font-style: italic;">{{#if payment_terms_resolved}}Payment terms: {{/if}}{{payment_terms_resolved}}</p>
   </div>
-</div>`, Header("{{billing_method.tax_invoice_title}}", "{{billing_method.invoice_number_label}}", TaxInvoiceBillToBanner()), ServiceFeeIntroRow(), PaymentDetailsSection(), TaxSummarySection())
+</div>`, RCTIHeader(TaxInvoiceBillToBanner()), ServiceFeeIntroRow(), PaymentDetailsSection(), TaxSummarySection())
 }
 

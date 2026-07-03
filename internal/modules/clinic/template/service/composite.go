@@ -30,8 +30,7 @@ func NewCompositeService(cfg *config.Config, templateRepo repository.ITemplateRe
 	templateSvc := NewTemplateService(templRepo, encryptionSvc, settingSvc)
 
 	renderer := rendering.NewChromeRenderer()
-	builder := rendering.NewTemplateBuilder()
-	pdfSvc := NewPDFService(templRepo, setRepo, encryptionSvc, renderer, builder, cfg)
+	pdfSvc := NewPDFService(templRepo, setRepo, encryptionSvc, renderer, cfg)
 
 	syncSvc := NewSyncService(templRepo, setRepo, encryptionSvc)
 

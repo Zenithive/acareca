@@ -25,18 +25,16 @@ type PDFService struct {
 	settingRepo  repository.ISettingRepository
 	encryption   IEncryptionService
 	renderer     rendering.IPDFRenderer
-	builder      *rendering.TemplateBuilder
 	dataMapper   *rendering.DataMapper
 	cfg          *config.Config
 }
 
-func NewPDFService(templateRepo repository.ITemplateRepository, settingRepo repository.ISettingRepository, encryption IEncryptionService, renderer rendering.IPDFRenderer, builder *rendering.TemplateBuilder, cfg *config.Config) IPDF {
+func NewPDFService(templateRepo repository.ITemplateRepository, settingRepo repository.ISettingRepository, encryption IEncryptionService, renderer rendering.IPDFRenderer, cfg *config.Config) IPDF {
 	return &PDFService{
 		templateRepo: templateRepo,
 		settingRepo:  settingRepo,
 		encryption:   encryption,
 		renderer:     renderer,
-		builder:      builder,
 		dataMapper:   rendering.NewDataMapper(),
 		cfg:          cfg,
 	}
@@ -85,7 +83,6 @@ func (s *PDFService) GenerateMultiPDF(ctx context.Context, templateIds []uuid.UU
 	}
 
 	var htmlBuilder, cssBuilder strings.Builder
-	s.builder.Reset()
 
 	for _, tId := range templateIds {
 		t, err := s.templateRepo.Get(ctx, tId)

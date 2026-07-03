@@ -26,5 +26,5 @@ func RemittanceHTML() string {
   <div class="footer-notes-box">
     <p style="text-transform: lowercase; font-style: italic;"><span style="text-transform: none; font-style: italic;">This remittance advice is issued</span> {{invoice_frequency}} <span style="text-transform: none; font-style: italic;">together with the Calculation Statement (page 1) and {{billing_method.page_two_label}}. Please retain for your records and provide to your accountant at year end.</span></p>
   </div>
-</div>{{/if}}`, Header("REMITTANCE ADVICE", "Reference", RemittancePayeeBanner()), remittanceTable, RemittancePaymentDetailsTable())
+</div>{{/if}}`, RemittanceHeader(RemittancePayeeBanner()), remittanceTable, RemittancePaymentDetailsTable())
 }

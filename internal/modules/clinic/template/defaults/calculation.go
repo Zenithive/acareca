@@ -85,5 +85,5 @@ func CalculationHTML() string {
   %s
 
   %s
-</div>`, Header("CALCULATION STATEMENT", "Statement No.", DefaultPreparedForBanner()), patientFeesTable, ServiceFeeIntroRowCalculation(), settlementTable, FooterNotesSection("{{footer_note}}"))
+</div>`, CalculationStatementHeader(DefaultPreparedForBanner()), patientFeesTable, ServiceFeeIntroRowCalculation(), settlementTable, FooterNotesSection("{{footer_note}}"))
 }

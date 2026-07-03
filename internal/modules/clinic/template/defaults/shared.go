@@ -191,7 +191,7 @@ func DataTable(cfg TableConfig) string {
 	html := `<table class="data-table">
     <thead>
       <tr>`
-	
+
 	for _, col := range cfg.Columns {
 		align := col.Align
 		if align == "" {
@@ -200,23 +200,23 @@ func DataTable(cfg TableConfig) string {
 		html += `
         <th style="width: ` + col.Width + `; text-align: ` + align + `;">` + col.Header + `</th>`
 	}
-	
+
 	html += `
       </tr>
     </thead>
     <tbody>
       {{#each ` + cfg.ItemsVariable + `}}
       <tr{{#if row_class}} class="{{row_class}}"{{/if}}>`
-	
+
 	for _, col := range cfg.Columns {
 		align := col.Align
 		if align == "" {
 			align = "left"
 		}
-		
+
 		var cellClass string
 		var cellContent string
-		
+
 		switch col.FieldType {
 		case "amount":
 			cellClass = ` class="num{{#if value_class}} {{value_class}}{{/if}}"`
@@ -227,17 +227,17 @@ func DataTable(cfg TableConfig) string {
 		default:
 			cellContent = `{{label}}`
 		}
-		
+
 		html += `
         <td` + cellClass + `>` + cellContent + `</td>`
 	}
-	
+
 	html += `
       </tr>
       {{/each}}
     </tbody>
   </table>`
-	
+
 	return html
 }
 
@@ -287,6 +287,118 @@ func Header(title, labelName, addressBannerHTML string) string {
             <td class="hm-lbl" style="text-align: left; padding: 2px 0;"><strong>Invoice Frequency</strong></td>
             <td class="hm-val" style="text-align: right; padding: 2px 0;">{{invoice_frequency}}</td>
           </tr>
+        </tbody>
+      </table>
+    </td>
+  </tr>
+</table>`
+}
+
+// HeaderConfig defines configuration for building custom headers
+type HeaderConfig struct {
+	Title              string
+	LabelName          string
+	AddressBannerHTML  string
+	ShowBillingPeriod  bool
+	ShowInvoiceFreq    bool
+	CustomMetadataRows []MetadataRow
+}
+
+// MetadataRow represents a custom metadata row in the header
+type MetadataRow struct {
+	Label string
+	Value string
+}
+
+// CalculationStatementHeader returns a header specifically for Calculation Statements
+// with all standard metadata fields
+func CalculationStatementHeader(addressBannerHTML string) string {
+	return Header("CALCULATION STATEMENT", "Statement No.", addressBannerHTML)
+}
+
+// RCTIHeader returns a header specifically for RCTI (Recipient Created Tax Invoice)
+// Uses dynamic title and label from billing_method
+func RCTIHeader(addressBannerHTML string) string {
+	return Header("{{billing_method.tax_invoice_title}}", "{{billing_method.invoice_number_label}}", addressBannerHTML)
+}
+
+// RemittanceHeader returns a header specifically for Remittance Advice
+func RemittanceHeader(addressBannerHTML string) string {
+	return Header("REMITTANCE ADVICE", "Reference", addressBannerHTML)
+}
+
+// CustomHeader builds a header with configurable metadata rows
+func CustomHeader(cfg HeaderConfig) string {
+	metadataRows := ""
+
+	// Add invoice number row
+	metadataRows += `
+          <tr>
+            <td class="hm-lbl" style="text-align: left; padding: 2px 0;"><strong>` + cfg.LabelName + `</strong></td>
+            <td class="hm-val" style="text-align: right; padding: 2px 0;">{{invoice_number}}</td>
+          </tr>`
+
+	// Add issue date row
+	metadataRows += `
+          <tr>
+            <td class="hm-lbl" style="text-align: left; padding: 2px 0;"><strong>Issue Date</strong></td>
+            <td class="hm-val" style="text-align: right; padding: 2px 0;">{{issue_date_display}}</td>
+          </tr>`
+
+	// Conditionally add billing period
+	if cfg.ShowBillingPeriod {
+		metadataRows += `
+          <tr>
+            <td class="hm-lbl" style="text-align: left; padding: 2px 0;"><strong>Billing Period</strong></td>
+            <td class="hm-val" style="text-align: right; padding: 2px 0;">{{billing_period}}</td>
+          </tr>`
+	}
+
+	// Conditionally add invoice frequency
+	if cfg.ShowInvoiceFreq {
+		metadataRows += `
+          <tr>
+            <td class="hm-lbl" style="text-align: left; padding: 2px 0;"><strong>Invoice Frequency</strong></td>
+            <td class="hm-val" style="text-align: right; padding: 2px 0;">{{invoice_frequency}}</td>
+          </tr>`
+	}
+
+	// Add custom metadata rows
+	for _, row := range cfg.CustomMetadataRows {
+		metadataRows += `
+          <tr>
+            <td class="hm-lbl" style="text-align: left; padding: 2px 0;"><strong>` + row.Label + `</strong></td>
+            <td class="hm-val" style="text-align: right; padding: 2px 0;">` + row.Value + `</td>
+          </tr>`
+	}
+
+	return `<table class="layout-table" style="margin-bottom: 2px; width: 100%; border-collapse: collapse;">
+  <tr>
+    <td style="width: 55%; vertical-align: top; padding: 0;">
+      {{#if template_settings.is_logo}}
+        {{#if logo_url}}
+        <div style="line-height: 0; margin: 0 0 4px 0;">
+          <img class="brand-logo" src="{{logo_url}}" alt="{{bill_from.name}}" />
+        </div>
+        {{/if}}
+      {{/if}}
+
+      <div style="margin: 0; padding: 0;">
+        <h2 class="hdr-clinic-name">{{bill_from.name}}</h2>
+        {{#if bill_from.address}}
+        <p class="hdr-clinic-line">{{bill_from.address}}</p>
+        {{/if}}
+        <p class="hdr-clinic-contact">
+          {{#if bill_from.abn}}ABN {{bill_from.abn}}{{/if}}{{#if bill_from.phone}} &nbsp;|&nbsp; Ph {{bill_from.phone}}{{/if}}{{#if bill_from.email}} &nbsp;|&nbsp; {{bill_from.email}}{{/if}}
+        </p>
+      </div>
+
+      ` + cfg.AddressBannerHTML + `
+    </td>
+    <td style="width: 45%; vertical-align: top; text-align: right; padding: 0;">
+      <h1 class="hdr-doc-title">` + cfg.Title + `</h1>
+      <table class="hdr-meta" style="margin-left: auto; width: 100%; max-width: 240px; border-collapse: collapse;">
+        <tbody>` + metadataRows + `
         </tbody>
       </table>
     </td>
