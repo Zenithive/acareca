@@ -15,9 +15,8 @@ import (
 	"github.com/lib/pq"
 )
 
-var ErrNotFound = errors.New("template not found")
-var ErrInvoiceNotFound = errors.New("invoice record not found")
-var ErrUnauthorized = errors.New("unauthorized access to template or invoice")
+// Error definitions moved to errors.go
+// Using shared error definitions from package level
 
 type IRepository interface {
 	Create(ctx context.Context, t *Template) error
