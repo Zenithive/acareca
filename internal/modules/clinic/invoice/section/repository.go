@@ -17,7 +17,6 @@ var (
 	ErrSectionAlreadyExists = errors.New("section already exists for this invoice")
 )
 
-// IRepository defines the contract for section data operations
 type IRepository interface {
 	Create(ctx context.Context, tx *sqlx.Tx, invoiceID uuid.UUID, sections []Section) error
 	Update(ctx context.Context, tx *sqlx.Tx, sections []Section) error
@@ -48,62 +47,83 @@ func (r *Repository) Create(ctx context.Context, tx *sqlx.Tx, invoiceID uuid.UUI
 	}
 
 	for i := range sections {
-		if sections[i].ID == uuid.Nil {
-			sections[i].ID = uuid.New()
+		if err := r.createSectionRecursive(ctx, tx, invoiceID, &sections[i]); err != nil {
+			return err
 		}
-		sections[i].InvoiceID = &invoiceID
+	}
+	return nil
+}
 
-		query := `
+// createSectionRecursive creates a section and its nested children recursively
+func (r *Repository) createSectionRecursive(ctx context.Context, tx *sqlx.Tx, invoiceID uuid.UUID, section *Section) error {
+	if section.ID == uuid.Nil {
+		section.ID = uuid.New()
+	}
+	section.InvoiceID = &invoiceID
+
+	query := `
 		INSERT INTO tbl_map_invoice_section (
-			id, invoice_id, template_id, invoice_section, document_number, tax_method,
-			payment_method, account_name, bsb_number, account_number, payment_date, payment_reference
+			id, invoice_id, invoice_section, document_number, tax_method,
+			payment_method, account_name, bsb_number, account_number, payment_date, payment_reference, parent_section_id
 		)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 		RETURNING created_at
 	`
 
-		err := tx.QueryRowContext(
-			ctx,
-			query,
-			sections[i].ID,
-			sections[i].InvoiceID,
-			sections[i].TemplateID,
-			sections[i].InvoiceSection,
-			sections[i].DocumentNumber,
-			sections[i].TaxMethod,
-			sections[i].PaymentMethod,
-			sections[i].AccountName,
-			sections[i].Bsb,
-			sections[i].AccountNumber,
-			sections[i].PaymentDate,
-			sections[i].PaymentReference,
-		).Scan(&sections[i].CreatedAt)
+	err := tx.QueryRowContext(
+		ctx,
+		query,
+		section.ID,
+		section.InvoiceID,
+		section.InvoiceSection,
+		section.DocumentNumber,
+		section.TaxMethod,
+		section.PaymentMethod,
+		section.AccountName,
+		section.Bsb,
+		section.AccountNumber,
+		section.PaymentDate,
+		section.PaymentReference,
+		section.ParentSectionID,
+	).Scan(&section.CreatedAt)
 
-		if err != nil {
-			return fmt.Errorf("failed to create section: %w", err)
+	if err != nil {
+		return fmt.Errorf("failed to create section: %w", err)
+	}
+
+	// Create entries for this section
+	if len(section.Entries) > 0 {
+		explicitEntries := make([]*item.Item, len(section.Entries))
+
+		for j, entry := range section.Entries {
+			if entry != nil {
+				itemCopy := *entry
+				itemCopy.InvoiceSectionID = &section.ID
+				itemCopy.InvoiceID = invoiceID
+
+				explicitEntries[j] = &itemCopy
+			}
 		}
 
-		// Link all entries to this section
-		if len(sections[i].Entries) > 0 {
-			explicitEntries := make([]*item.Item, len(sections[i].Entries))
+		if err := r.itemRepo.Create(ctx, tx, invoiceID, explicitEntries); err != nil {
+			return fmt.Errorf("failed to create section entries: %w", err)
+		}
 
-			for j, entry := range sections[i].Entries {
-				if entry != nil {
-					itemCopy := *entry
-					itemCopy.InvoiceSectionID = &sections[i].ID
-					itemCopy.InvoiceID = invoiceID
+		section.Entries = explicitEntries
+	}
 
-					explicitEntries[j] = &itemCopy
+	// Recursively create nested child sections
+	if len(section.Sections) > 0 {
+		for j := range section.Sections {
+			if section.Sections[j] != nil {
+				section.Sections[j].ParentSectionID = &section.ID
+				if err := r.createSectionRecursive(ctx, tx, invoiceID, section.Sections[j]); err != nil {
+					return fmt.Errorf("failed to create nested section: %w", err)
 				}
 			}
-
-			if err := r.itemRepo.Create(ctx, tx, invoiceID, explicitEntries); err != nil {
-				return fmt.Errorf("failed to create section entries: %w", err)
-			}
-
-			sections[i].Entries = explicitEntries
 		}
 	}
+
 	return nil
 }
 
@@ -118,15 +138,14 @@ func (r *Repository) Update(ctx context.Context, tx *sqlx.Tx, sections []Section
 		SET 
 			document_number = $1,
 			tax_method = $2,
-			template_id = $3,
-			payment_method = $4,
-			account_name = $5,
-			bsb_number = $6,
-			account_number = $7,
-			payment_date = $8,
-			payment_reference = $9,
+			payment_method = $3,
+			account_name = $4,
+			bsb_number = $5,
+			account_number = $6,
+			payment_date = $7,
+			payment_reference = $8,
 			updated_at = NOW()
-		WHERE id = $10 AND deleted_at IS NULL
+		WHERE id = $9 AND deleted_at IS NULL
 		RETURNING updated_at
 	`
 
@@ -135,7 +154,6 @@ func (r *Repository) Update(ctx context.Context, tx *sqlx.Tx, sections []Section
 			query,
 			sections[i].DocumentNumber,
 			sections[i].TaxMethod,
-			sections[i].TemplateID,
 			sections[i].PaymentMethod,
 			sections[i].AccountName,
 			sections[i].Bsb,
@@ -226,7 +244,7 @@ func (r *Repository) GetByID(ctx context.Context, invoiceID, sectionID uuid.UUID
 
 	query := `
 		SELECT 
-			id, invoice_id, template_id, invoice_section, document_number, tax_method, 
+			id, invoice_id, invoice_section, document_number, tax_method, 
 			payment_method, account_name, bsb_number as bsb, account_number, payment_date::text, payment_reference,
 			created_at, updated_at
 		FROM tbl_map_invoice_section
@@ -237,7 +255,6 @@ func (r *Repository) GetByID(ctx context.Context, invoiceID, sectionID uuid.UUID
 	err := r.db.QueryRowContext(ctx, query, invoiceID, sectionID).Scan(
 		&section.ID,
 		&section.InvoiceID,
-		&section.TemplateID,
 		&section.InvoiceSection,
 		&section.DocumentNumber,
 		&section.TaxMethod,
@@ -281,9 +298,9 @@ func (r *Repository) ListByInvoiceID(ctx context.Context, invoiceID uuid.UUID) (
 
 	query := `
 		SELECT 
-			id, invoice_id, template_id, invoice_section, document_number, tax_method,
-			payment_method, account_name, bsb_number as bsb, account_number, payment_date::text, payment_reference,
-			created_at, updated_at
+			id, invoice_id, invoice_section, document_number, tax_method,
+			payment_method, account_name, bsb, account_number, payment_date::text, payment_reference,
+			parent_section_id, created_at, updated_at
 		FROM tbl_map_invoice_section
 		WHERE invoice_id = $1 AND deleted_at IS NULL
 		ORDER BY created_at ASC
@@ -295,15 +312,14 @@ func (r *Repository) ListByInvoiceID(ctx context.Context, invoiceID uuid.UUID) (
 	}
 	defer rows.Close()
 
-	sections := make([]Section, 0)
-	sectionIDMap := make(map[uuid.UUID]int)
+	allSections := make(map[uuid.UUID]*Section)
+	var topLevelSections []Section
 
 	for rows.Next() {
-		var section Section
+		section := &Section{}
 		err := rows.Scan(
 			&section.ID,
 			&section.InvoiceID,
-			&section.TemplateID,
 			&section.InvoiceSection,
 			&section.DocumentNumber,
 			&section.TaxMethod,
@@ -313,6 +329,7 @@ func (r *Repository) ListByInvoiceID(ctx context.Context, invoiceID uuid.UUID) (
 			&section.AccountNumber,
 			&section.PaymentDate,
 			&section.PaymentReference,
+			&section.ParentSectionID,
 			&section.CreatedAt,
 			&section.UpdatedAt,
 		)
@@ -321,12 +338,25 @@ func (r *Repository) ListByInvoiceID(ctx context.Context, invoiceID uuid.UUID) (
 		}
 
 		section.Entries = make([]*item.Item, 0)
-		sectionIDMap[section.ID] = len(sections)
-		sections = append(sections, section)
+		section.Sections = make([]*Section, 0)
+		allSections[section.ID] = section
+
+		if section.ParentSectionID == nil {
+			topLevelSections = append(topLevelSections, *section)
+		}
 	}
 
 	if err := rows.Err(); err != nil {
 		return nil, err
+	}
+
+	// Build hierarchy: attach child sections to their parents
+	for _, section := range allSections {
+		if section.ParentSectionID != nil {
+			if parent, ok := allSections[*section.ParentSectionID]; ok {
+				parent.Sections = append(parent.Sections, section)
+			}
+		}
 	}
 
 	// Load all items for this invoice
@@ -335,16 +365,34 @@ func (r *Repository) ListByInvoiceID(ctx context.Context, invoiceID uuid.UUID) (
 		return nil, fmt.Errorf("failed to load items: %w", err)
 	}
 
-	// Group items by section
+	// Build item hierarchy and assign to sections
+	itemMap := make(map[uuid.UUID]*item.Item)
 	for _, itm := range items {
-		if itm.InvoiceSectionID != nil {
-			if idx, ok := sectionIDMap[*itm.InvoiceSectionID]; ok {
-				sections[idx].Entries = append(sections[idx].Entries, itm)
+		itemMap[itm.ID] = itm
+	}
+
+	// Attach children to parent items
+	for _, itm := range items {
+		if itm.ParentID != nil {
+			if parent, ok := itemMap[*itm.ParentID]; ok {
+				if parent.Children == nil {
+					parent.Children = make([]*item.Item, 0)
+				}
+				parent.Children = append(parent.Children, itm)
 			}
 		}
 	}
 
-	return sections, nil
+	// Assign top-level items to their sections
+	for _, itm := range items {
+		if itm.InvoiceSectionID != nil && itm.ParentID == nil { // Only top-level items
+			if section, ok := allSections[*itm.InvoiceSectionID]; ok {
+				section.Entries = append(section.Entries, itm)
+			}
+		}
+	}
+
+	return topLevelSections, nil
 }
 
 // GetByType retrieves a section by invoice ID and section type
@@ -355,7 +403,7 @@ func (r *Repository) GetByType(ctx context.Context, invoiceID uuid.UUID, section
 
 	query := `
 		SELECT 
-			id, invoice_id, template_id, invoice_section, document_number, tax_method,
+			id, invoice_id, invoice_section, document_number, tax_method,
 			payment_method, account_name, bsb_number as bsb, account_number, payment_date::text, payment_reference,
 			created_at, updated_at
 		FROM tbl_map_invoice_section
@@ -367,7 +415,6 @@ func (r *Repository) GetByType(ctx context.Context, invoiceID uuid.UUID, section
 	err := r.db.QueryRowContext(ctx, query, invoiceID, sectionType).Scan(
 		&section.ID,
 		&section.InvoiceID,
-		&section.TemplateID,
 		&section.InvoiceSection,
 		&section.DocumentNumber,
 		&section.TaxMethod,
@@ -432,7 +479,7 @@ func (r *Repository) UpsertSections(ctx context.Context, tx *sqlx.Tx, invoiceID 
 		} else {
 			var dbSection Section
 			err := tx.QueryRowxContext(ctx, `
-				SELECT id, invoice_section, invoice_id, template_id FROM tbl_map_invoice_section WHERE id = $1 AND deleted_at IS NULL
+				SELECT id, invoice_section, invoice_id FROM tbl_map_invoice_section WHERE id = $1 AND deleted_at IS NULL
 			`, section.ID).StructScan(&dbSection)
 
 			if err == nil {
@@ -490,14 +537,13 @@ func (r *Repository) updateSection(ctx context.Context, tx *sqlx.Tx, section Sec
 			document_number = $1,
 			tax_method = $2,
 			invoice_section = $3,
-			template_id = $4,
-			payment_method = $5,
-			account_name = $6,
-			bsb_number = $7,
-			account_number = $8,
-			payment_date = $9,
-			payment_reference = $10,
-			updated_at = NOW()
+			payment_method = $4,
+			account_name = $5,
+			bsb = $6,
+			account_number = $7,
+			payment_date = $8,
+			payment_reference = $9,
+			parent_section_id = $10
 		WHERE id = $11 AND deleted_at IS NULL
 	`
 
@@ -507,13 +553,13 @@ func (r *Repository) updateSection(ctx context.Context, tx *sqlx.Tx, section Sec
 		section.DocumentNumber,
 		section.TaxMethod,
 		section.InvoiceSection,
-		section.TemplateID,
 		section.PaymentMethod,
 		section.AccountName,
 		section.Bsb,
 		section.AccountNumber,
 		section.PaymentDate,
 		section.PaymentReference,
+		section.ParentSectionID,
 		section.ID,
 	)
 

@@ -5,19 +5,21 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/shared/common"
+	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/samber/lo"
 )
 
 type RqContact struct {
-	ClinicID uuid.UUID    `json:"clinic_id" validate:"required"`
-	Fname    string       `json:"fname" validate:"required"`
-	Lname    string       `json:"lname" validate:"required"`
-	Phone    string       `json:"phone" validate:"required"`
-	Email    string       `json:"email" validate:"required,email"`
-	Website  string       `json:"website" validate:"omitempty,url"`
-	ABN      string       `json:"abn" validate:"omitempty"`
-	Note     string       `json:"note" validate:"omitempty"`
-	Address  []*RqAddress `json:"address" validate:"omitempty,dive"`
+	ClinicID uuid.UUID                    `json:"clinic_id" validate:"required"`
+	Fname    string                       `json:"fname" validate:"required"`
+	Lname    string                       `json:"lname" validate:"required"`
+	Phone    string                       `json:"phone" validate:"required"`
+	Email    string                       `json:"email" validate:"required,email"`
+	Website  string                       `json:"website" validate:"omitempty,url"`
+	ABN      string                       `json:"abn" validate:"omitempty"`
+	Note     string                       `json:"note" validate:"omitempty"`
+	Address  []*RqAddress                 `json:"address" validate:"omitempty,dive"`
+	Role     util.ClinicContactPersonRole `json:"role" validate:"omitempty,oneof=DENTIST PATIENT"`
 }
 
 func (r *RqContact) ToContact() Contact {
@@ -38,6 +40,7 @@ func (r *RqContact) ToContact() Contact {
 		ABN:      r.ABN,
 		Note:     r.Note,
 		Address:  addresses,
+		Role:     r.Role,
 	}
 }
 
@@ -73,16 +76,17 @@ func (r *RqAddress) ToAddress() Address {
 }
 
 type RqUpdateContact struct {
-	ID       uuid.UUID    `json:"id" validate:"-"`
-	ClinicID *uuid.UUID   `json:"clinic_id,omitempty"`
-	Fname    *string      `json:"fname,omitempty"`
-	Lname    *string      `json:"lname,omitempty"`
-	Phone    *string      `json:"phone,omitempty"`
-	Email    *string      `json:"email,omitempty" validate:"omitempty,email"`
-	Website  *string      `json:"website" validate:"omitempty,url"`
-	ABN      *string      `json:"abn" validate:"omitempty"`
-	Note     *string      `json:"note" validate:"omitempty"`
-	Address  []*RqAddress `json:"address" validate:"omitempty,dive"`
+	ID       uuid.UUID                     `json:"id" validate:"-"`
+	ClinicID *uuid.UUID                    `json:"clinic_id,omitempty"`
+	Fname    *string                       `json:"fname,omitempty"`
+	Lname    *string                       `json:"lname,omitempty"`
+	Phone    *string                       `json:"phone,omitempty"`
+	Email    *string                       `json:"email,omitempty" validate:"omitempty,email"`
+	Website  *string                       `json:"website" validate:"omitempty,url"`
+	ABN      *string                       `json:"abn" validate:"omitempty"`
+	Note     *string                       `json:"note" validate:"omitempty"`
+	Address  []*RqAddress                  `json:"address" validate:"omitempty,dive"`
+	Role     *util.ClinicContactPersonRole `json:"role" validate:"omitempty,oneof=DENTIST PATIENT"`
 }
 
 func (r *RqUpdateContact) ApplyToContact(contact Contact) Contact {
@@ -120,23 +124,28 @@ func (r *RqUpdateContact) ApplyToContact(contact Contact) Contact {
 		contact.Address = addresses
 	}
 
+	if r.Role != nil {
+		contact.Role = *r.Role
+	}
+
 	return contact
 }
 
 type Contact struct {
-	ID        uuid.UUID  `db:"id"`
-	ClinicId  uuid.UUID  `db:"clinic_id"`
-	Fname     string     `db:"fname"`
-	Lname     string     `db:"lname"`
-	Phone     string     `db:"phone"`
-	Email     string     `db:"email"`
-	Website   string     `db:"website"`
-	ABN       string     `db:"abn"`
-	Note      string     `db:"note"`
-	Address   []*Address `db:"address"`
-	CreatedAt time.Time  `db:"created_at"`
-	UpdatedAt time.Time  `db:"updated_at"`
-	DeletedAt *time.Time `db:"deleted_at"`
+	ID        uuid.UUID                    `db:"id"`
+	ClinicId  uuid.UUID                    `db:"clinic_id"`
+	Fname     string                       `db:"fname"`
+	Lname     string                       `db:"lname"`
+	Phone     string                       `db:"phone"`
+	Email     string                       `db:"email"`
+	Website   string                       `db:"website"`
+	ABN       string                       `db:"abn"`
+	Note      string                       `db:"note"`
+	Address   []*Address                   `db:"address"`
+	Role      util.ClinicContactPersonRole `db:"role"`
+	CreatedAt time.Time                    `db:"created_at"`
+	UpdatedAt time.Time                    `db:"updated_at"`
+	DeletedAt *time.Time                   `db:"deleted_at"`
 }
 
 type Address struct {
@@ -155,18 +164,19 @@ type Address struct {
 }
 
 type RsContact struct {
-	ID        uuid.UUID    `json:"id"`
-	ClinicId  uuid.UUID    `json:"clinic_id"`
-	Fname     string       `json:"fname"`
-	Lname     string       `json:"lname"`
-	Phone     string       `json:"phone"`
-	Email     string       `json:"email"`
-	Website   string       `json:"website"`
-	ABN       string       `json:"abn"`
-	Note      string       `json:"note"`
-	Address   []*RsAddress `json:"address"`
-	CreatedAt time.Time    `json:"created_at"`
-	UpdatedAt time.Time    `json:"updated_at"`
+	ID        uuid.UUID                    `json:"id"`
+	ClinicId  uuid.UUID                    `json:"clinic_id"`
+	Fname     string                       `json:"fname"`
+	Lname     string                       `json:"lname"`
+	Phone     string                       `json:"phone"`
+	Email     string                       `json:"email"`
+	Website   string                       `json:"website"`
+	ABN       string                       `json:"abn"`
+	Note      string                       `json:"note"`
+	Address   []*RsAddress                 `json:"address"`
+	Role      util.ClinicContactPersonRole `json:"role"`
+	CreatedAt time.Time                    `json:"created_at"`
+	UpdatedAt time.Time                    `json:"updated_at"`
 }
 
 func (c *Contact) ToRsContact() RsContact {
@@ -188,6 +198,7 @@ func (c *Contact) ToRsContact() RsContact {
 		ABN:       c.ABN,
 		Note:      c.Note,
 		Address:   addresses,
+		Role:      c.Role,
 		CreatedAt: c.CreatedAt,
 		UpdatedAt: c.UpdatedAt,
 	}
@@ -222,6 +233,7 @@ type Filter struct {
 	ClinicID *uuid.UUID `form:"clinic_id"`
 	Fname    *string    `form:"fname"`
 	Email    *string    `form:"email"`
+	Role     *string    `form:"role"`
 	common.Filter
 }
 
@@ -237,6 +249,11 @@ func (filter *Filter) MapToFilter() common.Filter {
 	if filter.Email != nil && *filter.Email != "" {
 		filters["email"] = "%" + *filter.Email + "%"
 		operators["email"] = common.OpLike
+	}
+	// Exact match mapping logic
+	if filter.Role != nil && *filter.Role != "" {
+		filters["role"] = *filter.Role
+		operators["role"] = common.OpEq
 	}
 
 	return common.NewFilter(filter.Search, filters, operators, filter.Limit, filter.Offset, filter.SortBy, filter.OrderBy)

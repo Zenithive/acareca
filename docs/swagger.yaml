@@ -1664,6 +1664,12 @@ definitions:
         type: string
       phone:
         type: string
+      role:
+        allOf:
+        - $ref: '#/definitions/util.ClinicContactPersonRole'
+        enum:
+        - DENTIST
+        - PATIENT
       website:
         type: string
     required:
@@ -1695,6 +1701,12 @@ definitions:
         type: string
       phone:
         type: string
+      role:
+        allOf:
+        - $ref: '#/definitions/util.ClinicContactPersonRole'
+        enum:
+        - DENTIST
+        - PATIENT
       website:
         type: string
     type: object
@@ -1741,6 +1753,8 @@ definitions:
         type: string
       phone:
         type: string
+      role:
+        $ref: '#/definitions/util.ClinicContactPersonRole'
       updated_at:
         type: string
       website:
@@ -2530,6 +2544,13 @@ definitions:
         - MONTHLY
         - YEARLY
         type: string
+      invoiceMethod:
+        allOf:
+        - $ref: '#/definitions/util.InvoiceType'
+        enum:
+        - SFA_CLINIC_COLLECTS
+        - SFA_DENTIST_COLLECTS
+        - INDEPENDENT_CONTRACTOR
       issueDate:
         type: string
       name:
@@ -2555,19 +2576,15 @@ definitions:
         type: string
       bodyFontFamily:
         type: string
-      footerId:
-        type: string
       headerFontFamily:
         type: string
       isLogo:
         type: boolean
-      isTax:
-        type: boolean
       isWatermark:
         type: boolean
-      letterheadId:
-        type: string
       logoId:
+        type: string
+      paymentTerms:
         type: string
       primaryColor:
         type: string
@@ -2615,6 +2632,13 @@ definitions:
         - MONTHLY
         - YEARLY
         type: string
+      invoiceMethod:
+        allOf:
+        - $ref: '#/definitions/util.InvoiceType'
+        enum:
+        - SFA_CLINIC_COLLECTS
+        - SFA_DENTIST_COLLECTS
+        - INDEPENDENT_CONTRACTOR
       issueDate:
         type: string
       name:
@@ -2648,6 +2672,8 @@ definitions:
         type: string
       invoiceFrequency:
         type: string
+      invoiceMethod:
+        $ref: '#/definitions/util.InvoiceType'
       issueDate:
         type: string
       name:
@@ -2953,12 +2979,7 @@ definitions:
       paymentReference:
         type: string
       sectionType:
-        allOf:
-        - $ref: '#/definitions/section.SectionType'
-        enum:
-        - CALCULATION_STATEMENT
-        - SFA_INVOICE
-        - REMITTANCE_INVOICE
+        $ref: '#/definitions/section.SectionType'
       taxMethod:
         allOf:
         - $ref: '#/definitions/section.TaxMethod'
@@ -2970,17 +2991,11 @@ definitions:
         type: string
     required:
     - documentNumber
-    - sectionType
     type: object
   section.RqUpdateSection:
     properties:
       SectionType:
-        allOf:
-        - $ref: '#/definitions/section.SectionType'
-        enum:
-        - CALCULATION_STATEMENT
-        - SFA_INVOICE
-        - REMITTANCE_INVOICE
+        $ref: '#/definitions/section.SectionType'
       accountName:
         type: string
       accountNumber:
@@ -3055,13 +3070,15 @@ definitions:
   section.SectionType:
     enum:
     - CALCULATION_STATEMENT
-    - SFA_INVOICE
-    - REMITTANCE_INVOICE
+    - TAX_INVOICE
+    - REMITTANCE_ADVICE
+    - RCTI
     type: string
     x-enum-varnames:
     - CALCULATIONSTATEMENT
-    - SFAINVOICE
+    - TAXINVOICE
     - REMITTANCEINVOICE
+    - RCTI
   section.TaxMethod:
     enum:
     - NO_TAX
@@ -3266,8 +3283,6 @@ definitions:
         type: string
       due_date_display:
         type: string
-      footer_html:
-        type: string
       grand_total:
         type: number
       has_attachments:
@@ -3284,8 +3299,6 @@ definitions:
         items:
           $ref: '#/definitions/template.LineItem'
         type: array
-      letterhead_html:
-        type: string
       logo_initial:
         type: string
       logo_url:
@@ -3331,8 +3344,6 @@ definitions:
       show_logo:
         type: boolean
       show_logo_image:
-        type: boolean
-      show_tax:
         type: boolean
       subtotal:
         type: number
@@ -3411,29 +3422,23 @@ definitions:
         type: string
       body_font_family:
         type: string
-      footer:
-        type: string
       header_font_family:
         type: string
       id:
         type: string
+      invoice_id:
+        type: string
       is_logo:
-        type: boolean
-      is_tax:
         type: boolean
       is_water_mark:
         type: boolean
-      letter_head:
-        type: string
       logo:
         type: string
-      mapping_id:
+      payment_terms:
         type: string
       primary_color:
         type: string
       table_style:
-        type: string
-      template_id:
         type: string
       term_text:
         type: string
@@ -3448,29 +3453,23 @@ definitions:
         type: string
       created_at:
         type: string
-      footer:
-        $ref: '#/definitions/file.RsDocument'
       header_font_family:
         type: string
       id:
         type: string
+      invoice_id:
+        type: string
       is_logo:
-        type: boolean
-      is_tax:
         type: boolean
       is_water_mark:
         type: boolean
-      letter_head:
-        $ref: '#/definitions/file.RsDocument'
       logo:
         $ref: '#/definitions/file.RsDocument'
-      mapping_id:
+      payment_terms:
         type: string
       primary_color:
         type: string
       table_style:
-        type: string
-      template_id:
         type: string
       term_text:
         type: string
@@ -3510,6 +3509,24 @@ definitions:
     - ChannelInApp
     - ChannelPush
     - ChannelEmail
+  util.ClinicContactPersonRole:
+    enum:
+    - DENTIST
+    - PATIENT
+    type: string
+    x-enum-varnames:
+    - RoleDentist
+    - RolePatient
+  util.InvoiceType:
+    enum:
+    - SFA_CLINIC_COLLECTS
+    - SFA_DENTIST_COLLECTS
+    - INDEPENDENT_CONTRACTOR
+    type: string
+    x-enum-varnames:
+    - InvoiceTypeSFAClinicCollects
+    - InvoiceTypeSFADentistCollects
+    - InvoiceTypeIndependentContractor
   util.NotificationEventType:
     enum:
     - new.transaction
@@ -6485,6 +6502,11 @@ paths:
     get:
       consumes:
       - application/json
+      parameters:
+      - description: DENTIST or PATIENT
+        in: query
+        name: role
+        type: string
       produces:
       - application/json
       responses:
@@ -10399,12 +10421,13 @@ paths:
       - calculation
   /templates:
     get:
-      description: Gathers paginated index parameters tracking active engine documents
+      description: Gathers pagination index tracking active engine documents matching
+        invoice methods
       parameters:
-      - description: 'Filter by document types (comma-separated: Calculation Statement,
-          Tax Invoice, Remittance Advice)'
+      - description: 'Filter by invoice method : SFA_CLINIC_COLLECTS(A), SFA_DENTIST_COLLECTS(B)
+          or INDEPENDENT_CONTRACTOR(C)'
         in: query
-        name: type
+        name: method
         type: string
       produces:
       - application/json
@@ -10618,46 +10641,13 @@ paths:
       tags:
       - Templates
   /templates/{id}/settings:
-    get:
-      description: Queries UI visual presets (e.g., brand colors, fonts, margins)
-        tracked down to structural design blocks
-      parameters:
-      - description: Template UUID ID
-        in: path
-        name: id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Style settings specifications map
-          schema:
-            $ref: '#/definitions/template.RsSetting'
-        "400":
-          description: Invalid profile lookup request values
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "500":
-          description: Internal Server Error
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      security:
-      - BearerToken: []
-      summary: Get Default Template Settings
-      tags:
-      - Templates
     put:
       consumes:
       - application/json
       description: Overrides layout details, font schemas, branding assets, or invoice
         structural rules dynamically
       parameters:
-      - description: Template UUID ID
+      - description: Invoice ID
         in: path
         name: id
         required: true
@@ -10697,25 +10687,17 @@ paths:
       description: Queries UI visual presets prioritizing custom invoice overrides,
         falling back to global defaults automatically
       parameters:
-      - description: Invoice UUID ID Context
+      - description: Invoice ID (blank for global system defaults)
         in: query
         name: invoiceId
-        required: true
-        type: string
-      - description: Template UUID ID (can be repeated for multiple templates)
-        in: query
-        name: templateId
-        required: true
         type: string
       produces:
       - application/json
       responses:
         "200":
-          description: Resolved style settings specifications map keyed by template
-            ID
+          description: Resolved style settings specifications model payload
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/template.RsSetting'
         "400":
           description: Invalid parameters profile lookup request values
           schema:

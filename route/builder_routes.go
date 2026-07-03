@@ -22,6 +22,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/engine/calculation"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/formula"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/method"
+	"github.com/iamarpitzala/acareca/internal/modules/engine/pl"
 	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	"github.com/iamarpitzala/acareca/internal/shared/middleware"
 	"github.com/iamarpitzala/acareca/pkg/config"
@@ -44,6 +45,7 @@ func RegisterBuilderRoutes(
 	notificationSvc notification.Service,
 	adminRepo admin.Repository,
 	authSvc auth.Service,
+	plRepo pl.Repository,
 ) {
 	// Create permission adapter for feature-based permissions
 	// Wrap the service methods to convert *Permissions to FeaturePermissions interface
@@ -63,7 +65,7 @@ func RegisterBuilderRoutes(
 	detailRepo := detail.NewRepository(dbConn)
 	versionRepo := version.NewRepository(dbConn)
 	fieldRepo := field.NewRepository(dbConn)
-	entryRepo := entry.NewRepository(dbConn)
+	entryRepo := entry.NewRepository(dbConn, plRepo)
 	formulaRepo := formula.NewRepository(dbConn)
 	fyRepo := fy.NewRepository(dbConn)
 
@@ -81,7 +83,7 @@ func RegisterBuilderRoutes(
 	form.RegisterRoutes(formGroup, formHandler, permAdapter)
 
 	// Entry routes
-	entriesRepo := entry.NewRepository(dbConn)
+	entriesRepo := entry.NewRepository(dbConn, plRepo)
 	entriesSvc := entry.NewService(dbConn, entriesRepo, fieldRepo, method.NewService(), detailSvc, versionSvc, auditSvc, accountantRepo, authRepo, clinicRepo, clinicSvc, formulaSvc, fieldSvc, invitationSvc, invitationRepo, detailRepo, fyRepo, practitionerSvc, coaRepo, notificationSvc, adminRepo, authSvc)
 	entriesHandler := entry.NewHandler(entriesSvc, invitationSvc)
 

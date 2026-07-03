@@ -41,21 +41,17 @@ func DefaultSettings(templateId uuid.UUID) Setting {
 	tableStyle := "simple"
 
 	return Setting{
-		TemplateId:       templateId,
-		MappingId:        nil,
+		InvoiceId:        nil,
 		PrimaryColor:     "#1f4e5f",
 		AccentColor:      "#5f96b4",
 		BodyFontFamily:   "Arial",
 		HeaderFontFamily: "Arial",
 		IsLogo:           true,
 		LogoId:           nil,
-		LetterHeadId:     nil,
-		FooterId:         nil,
 		TermText:         &termText,
 		PaymentTerms:     &paymentTerms,
 		IsWaterMark:      false,
 		WaterMarkText:    &waterMarkText,
-		IsTax:            true,
 		TableStyle:       &tableStyle,
 	}
 }

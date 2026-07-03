@@ -32,11 +32,34 @@ func NewRepository(db *sqlx.DB) IRepository {
 // Create implements [IRepository].
 func (r *Repository) Create(ctx context.Context, tx *sqlx.Tx, invoiceID uuid.UUID, items []*Item) error {
 	for _, item := range items {
-		if item.ID == uuid.Nil {
-			item.ID = uuid.New()
-		}
-		if err := r.persistItem(ctx, tx, item, false, invoiceID); err != nil {
+		if err := r.createItemRecursive(ctx, tx, item); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+// createItemRecursive creates an item and its nested children recursively
+func (r *Repository) createItemRecursive(ctx context.Context, tx *sqlx.Tx, item *Item) error {
+	if item.ID == uuid.Nil {
+		item.ID = uuid.New()
+	}
+	
+	if err := r.persistItem(ctx, tx, item, false); err != nil {
+		return err
+	}
+
+	// Recursively create children
+	if len(item.Children) > 0 {
+		for _, child := range item.Children {
+			if child != nil {
+				child.ParentID = &item.ID
+				child.InvoiceSectionID = item.InvoiceSectionID
+				child.InvoiceID = item.InvoiceID
+				if err := r.createItemRecursive(ctx, tx, child); err != nil {
+					return fmt.Errorf("failed to create child item: %w", err)
+				}
+			}
 		}
 	}
 
@@ -57,7 +80,8 @@ func (r *Repository) GetByInvoiceID(ctx context.Context, db *sqlx.DB, invoiceID 
 			entry_type,
 			field_key,
 			expression,
-			is_final
+			is_final,
+			parent_id
 		FROM tbl_invoice_item
 		WHERE invoice_section_id IN (
 			SELECT id FROM tbl_map_invoice_section WHERE invoice_id = $1 AND deleted_at IS NULL
@@ -70,9 +94,11 @@ func (r *Repository) GetByInvoiceID(ctx context.Context, db *sqlx.DB, invoiceID 
 	}
 	defer rows.Close()
 
-	items := make([]*Item, 0)
+	allItems := make(map[uuid.UUID]*Item)
+	var topLevelItems []*Item
+
 	for rows.Next() {
-		var invoiceItem Item
+		invoiceItem := &Item{}
 		var exprJSON []byte
 		if err := rows.Scan(
 			&invoiceItem.ID,
@@ -86,10 +112,12 @@ func (r *Repository) GetByInvoiceID(ctx context.Context, db *sqlx.DB, invoiceID 
 			&invoiceItem.FieldKey,
 			&exprJSON,
 			&invoiceItem.IsFinal,
+			&invoiceItem.ParentID,
 		); err != nil {
 			return nil, err
 		}
 		invoiceItem.InvoiceID = invoiceID
+		invoiceItem.Children = make([]*Item, 0)
 
 		if len(exprJSON) > 0 {
 			if err := json.Unmarshal(exprJSON, &invoiceItem.Expression); err != nil {
@@ -97,10 +125,27 @@ func (r *Repository) GetByInvoiceID(ctx context.Context, db *sqlx.DB, invoiceID 
 			}
 		}
 
-		items = append(items, &invoiceItem)
+		allItems[invoiceItem.ID] = invoiceItem
+
+		if invoiceItem.ParentID == nil {
+			topLevelItems = append(topLevelItems, invoiceItem)
+		}
 	}
 
-	return items, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Build hierarchy: attach children to parents
+	for _, item := range allItems {
+		if item.ParentID != nil {
+			if parent, ok := allItems[*item.ParentID]; ok {
+				parent.Children = append(parent.Children, item)
+			}
+		}
+	}
+
+	return topLevelItems, nil
 }
 
 // Update implements [IRepository].
@@ -109,7 +154,7 @@ func (r *Repository) Update(ctx context.Context, tx *sqlx.Tx, invoiceID uuid.UUI
 		if item.ID == uuid.Nil {
 			item.ID = uuid.New()
 		}
-		if err := r.persistItem(ctx, tx, item, true, invoiceID); err != nil {
+		if err := r.persistItem(ctx, tx, item, true); err != nil {
 			return err
 		}
 	}
@@ -155,7 +200,7 @@ func (r *Repository) UpsertItems(ctx context.Context, tx *sqlx.Tx, invoiceID uui
 			}
 		}
 
-		if err := r.persistItem(ctx, tx, item, exists, invoiceID); err != nil {
+		if err := r.persistItem(ctx, tx, item, exists); err != nil {
 			return err
 		}
 	}
@@ -164,7 +209,7 @@ func (r *Repository) UpsertItems(ctx context.Context, tx *sqlx.Tx, invoiceID uui
 }
 
 // persistItem inserts or updates a single item based on isUpdate flag
-func (r *Repository) persistItem(ctx context.Context, tx *sqlx.Tx, item *Item, isUpdate bool, invoiceID uuid.UUID) error {
+func (r *Repository) persistItem(ctx context.Context, tx *sqlx.Tx, item *Item, isUpdate bool) error {
 	var exprJSON []byte
 	var err error
 	if item.Expression != nil {
@@ -179,20 +224,20 @@ func (r *Repository) persistItem(ctx context.Context, tx *sqlx.Tx, item *Item, i
 			UPDATE tbl_invoice_item
 			SET name = $2, description = $3, entry_type = $4, bas_code = $5,
 				field_key = $6, amount = $7, invoice_section_id = $8,
-				sort_order = $9, expression = $10, is_final = $11, updated_at = NOW()
+				sort_order = $9, expression = $10, is_final = $11, parent_id = $12, updated_at = NOW()
 			WHERE id = $1 AND deleted_at IS NULL
 		`, item.ID, item.Name, item.Description, item.EntryType, item.BASCode,
-			item.FieldKey, item.Amount, item.InvoiceSectionID, item.SortOrder, exprJSON, item.IsFinal)
+			item.FieldKey, item.Amount, item.InvoiceSectionID, item.SortOrder, exprJSON, item.IsFinal, item.ParentID)
 		return err
 	}
 
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO tbl_invoice_item (
 			id, name, description, entry_type, bas_code, field_key,
-			amount, invoice_section_id, sort_order, expression, is_final
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+			amount, invoice_section_id, sort_order, expression, is_final, parent_id
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 	`, item.ID, item.Name, item.Description, item.EntryType, item.BASCode,
-		item.FieldKey, item.Amount, item.InvoiceSectionID, item.SortOrder, exprJSON, item.IsFinal)
+		item.FieldKey, item.Amount, item.InvoiceSectionID, item.SortOrder, exprJSON, item.IsFinal, item.ParentID)
 	return err
 }
 
