@@ -32,7 +32,7 @@ type RqSection struct {
 	InvoiceID        *uuid.UUID      `json:"invoiceId,omitempty"`
 	TemplateID       uuid.UUID       `json:"templateId,omitempty"`
 	SectionType      SectionType     `json:"sectionType" `
-	DocumentNumber   string          `json:"documentNumber" validate:"required"`
+	DocumentNumber   string          `json:"documentNumber"`
 	TaxMethod        *TaxMethod      `json:"taxMethod,omitempty" validate:"omitempty,oneof=INCLUSIVE EXCLUSIVE NO_TAX"`
 	PaymentDate      *string         `json:"paymentDate"`
 	PaymentReference *string         `json:"paymentReference,omitempty"`
