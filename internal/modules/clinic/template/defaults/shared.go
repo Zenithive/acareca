@@ -6,10 +6,21 @@ package defaults
 
 // AddressBannerConfig defines configuration for address banner sections
 type AddressBannerConfig struct {
-	Label       string
-	NameField   string
+	Label        string
+	NameField    string
 	AddressField string
-	ABNField    string
+	ABNField     string
+	ExtraHTML    string // Optional extra HTML after ABN line (e.g., RCTI note)
+}
+
+// AddressBanner generates an address banner HTML block with the given configuration
+func AddressBanner(cfg AddressBannerConfig) string {
+	html := `<div class="address-banner-box"><div class="banner-label">` + cfg.Label + `</div><div class="recipient-name">{{` + cfg.NameField + `}}</div>{{#if ` + cfg.AddressField + `}}<p class="recipient-line">{{` + cfg.AddressField + `}}</p>{{/if}}{{#if ` + cfg.ABNField + `}}<p class="recipient-line">ABN {{` + cfg.ABNField + `}}</p>{{/if}}`
+	if cfg.ExtraHTML != "" {
+		html += cfg.ExtraHTML
+	}
+	html += `</div>`
+	return html
 }
 
 // DefaultPreparedForBanner returns the standard "PREPARED FOR" address banner
@@ -22,19 +33,142 @@ func DefaultPreparedForBanner() string {
 	})
 }
 
-// DefaultBilledToBanner returns the standard "BILLED TO" address banner
-func DefaultBilledToBanner() string {
+// TaxInvoiceBillToBanner returns the address banner for Tax Invoice with RCTI support
+func TaxInvoiceBillToBanner() string {
 	return AddressBanner(AddressBannerConfig{
-		Label:        "BILLED TO",
+		Label:        "{{billing_method.bill_to_label}}",
+		NameField:    "bill_to.name",
+		AddressField: "bill_to.address",
+		ABNField:     "bill_to.abn",
+		ExtraHTML:    `{{#if billing_method.show_rcti_note}}<p class="recipient-line" style="margin-top: 4px; font-size: 10px; font-style: italic;">Recipient: {{bill_from.name}} ABN {{bill_from.abn}}<br>Issued by the recipient under an RCTI agreement between the parties.</p>{{/if}}`,
+	})
+}
+
+// RemittancePayeeBanner returns the address banner for Remittance Advice
+func RemittancePayeeBanner() string {
+	return AddressBanner(AddressBannerConfig{
+		Label:        "PAYEE",
 		NameField:    "bill_to.name",
 		AddressField: "bill_to.address",
 		ABNField:     "bill_to.abn",
 	})
 }
 
-// AddressBanner generates an address banner HTML block with the given configuration
-func AddressBanner(cfg AddressBannerConfig) string {
-	return `<div class="address-banner-box"><div class="banner-label">` + cfg.Label + `</div><div class="recipient-name">{{` + cfg.NameField + `}}</div>{{#if ` + cfg.AddressField + `}}<p class="recipient-line">{{` + cfg.AddressField + `}}</p>{{/if}}{{#if ` + cfg.ABNField + `}}<p class="recipient-line">ABN {{` + cfg.ABNField + `}}</p>{{/if}}</div>`
+// FooterNotesSection returns the footer notes section HTML
+func FooterNotesSection(noteContent string) string {
+	return `<div class="footer-notes-box">
+    <p style="font-style: italic; margin-bottom: 4px;{{#if footer_note}} font-style: normal;{{/if}}"><strong>Notes:</strong> ` + noteContent + `</p>
+  </div>`
+}
+
+// PaymentDetailsSection returns the payment details table HTML for Tax Invoice
+func PaymentDetailsSection() string {
+	return `{{#if billing_method.show_payment_details}}
+        <div class="payment-details-container" style="margin-top: 0px;">
+          <div class="payment-details-header">PAYMENT DETAILS - PAY TO CLINIC</div>
+          <table class="payment-details-table payment-details-table-bordered" style="width: 100%%; border-collapse: collapse;">
+            <tbody>
+              <tr>
+                <td style="font-weight: bold; width: 40%%;">Account</td>
+                <td style="width: 60%%;">{{bill_from.name}}</td>
+              </tr>
+              <tr>
+                <td style="font-weight: bold;">BSB / Acc No.</td>
+                <td>{{coalesce clinic_payment_details "083-000 / 98765432"}}</td>
+              </tr>
+              <tr>
+                <td style="font-weight: bold;">Due Date</td>
+                <td>14 days from issue</td>
+              </tr>
+              <tr>
+                <td style="font-weight: bold;">Reference</td>
+                <td>{{invoice_number}}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        {{/if}}`
+}
+
+// RemittancePaymentDetailsTable returns the payment details table for Remittance
+func RemittancePaymentDetailsTable() string {
+	return `<div class="payment-details-container">
+    <div class="payment-details-header">PAYMENT DETAILS</div>
+    <table class="payment-details-table{{#if table_style_bordered}} payment-details-table-bordered{{/if}}{{#if table_style_striped}} payment-details-table-striped{{/if}}">
+      <tbody>
+        <tr>
+          <td style="font-weight: bold; width: 45%%;">Payment method</td>
+          <td style="width: 55%%;">{{coalesce custom_payment_method payment_method_label "Electronic funds transfer (EFT)"}}</td>
+        </tr>
+        <tr>
+          <td style="font-weight: bold;">Account name</td>
+          <td>{{coalesce custom_payment_account_name bill_to.name}}</td>
+        </tr>
+        <tr>
+          <td style="font-weight: bold;">BSB / Account No.</td>
+          <td>{{coalesce custom_payment_bsb "063-000"}} / {{coalesce custom_payment_account "12345678"}}</td>
+        </tr>
+        <tr>
+          <td style="font-weight: bold;">Payment date</td>
+          <td>{{coalesce payment_date_display issue_date_display}}</td>
+        </tr>
+        <tr>
+          <td style="font-weight: bold;">Payment reference</td>
+          <td>{{invoice_number}}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>`
+}
+
+// TaxSummarySection returns the tax summary table HTML
+func TaxSummarySection() string {
+	return `<table class="layout-table" style="font-size: 11px; line-height: 1.6;">
+          <tr>
+            <td style="padding: 3px 6px; text-align: left;">Subtotal (excl. GST)</td>
+            <td class="num" style="padding: 3px 6px;">{{format_currency subtotal}}</td>
+          </tr>
+          <tr>
+            <td style="padding: 3px 6px; text-align: left;">GST (10%%)</td>
+            <td class="num" style="padding: 3px 6px;">{{format_currency tax_total}}</td>
+          </tr>
+          <tr style="font-weight: bold; background-color: rgb(from var(--accent-color) r g b / 0.45) !important;">
+            <td style="padding: 5px 6px; border-top: 1px solid var(--primary-color) !important; border-bottom: 2px solid var(--primary-color) !important; text-align: left;">TOTAL (incl. GST)</td>
+            <td class="num" style="padding: 5px 6px; border-top: 1px solid var(--primary-color) !important; border-bottom: 2px solid var(--primary-color) !important;">{{format_currency grand_total}}</td>
+          </tr>
+        </table>`
+}
+
+// ServiceFeeIntroRow returns the service fee introduction row HTML for Tax Invoice
+func ServiceFeeIntroRow() string {
+	return `<tr>
+        <td colspan="3" style="border-bottom: none; padding-top: 5px; padding-bottom: 4px;">
+          <table class="layout-table" style="width: 100%%; border-collapse: collapse;">
+            <tr>
+              <td style="padding: 0; color: var(--text-dark); width: 65%%; vertical-align: middle;">
+                {{billing_method.tax_invoice_intro}}
+                {{#unless billing_method.hide_fee_rate}}
+                <span style="float: right; font-weight: bold; white-space: nowrap; margin-left: 8px;">
+                  {{billing_method.rate_label}}&nbsp;
+                  <span class="txt-blue-val">{{service_fee_rate_intro.fee_rate_display}}</span>
+                </span>
+                {{/unless}}
+              </td>
+              <td style="width: 20%%; padding: 0;"></td>
+              <td style="width: 15%%; padding: 0;"></td>
+            </tr>
+          </table>
+          {{#if billing_method.show_service_description}}
+            {{#if service_description_items}}
+            <ol style="margin: 6px 0 0 18px; padding: 0; list-style-type: decimal; font-size: 11px; line-height: 1.5; color: var(--text-dark);">
+              {{#each service_description_items}}
+              <li style="margin-bottom: 2px;">{{this}}</li>
+              {{/each}}
+            </ol>
+            {{/if}}
+          {{/if}}
+        </td>
+      </tr>`
 }
 
 // TableConfig defines configuration for data table sections

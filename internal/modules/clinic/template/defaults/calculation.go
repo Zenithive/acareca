@@ -32,17 +32,7 @@ func ServiceFeeIntroRowCalculation() string {
       </tr>`
 }
 
-// FooterNotesBox returns the footer notes section HTML
-func FooterNotesBox() string {
-	return `<div class="footer-notes-box">
-    <p style="font-style: italic; margin-bottom: 4px;{{#if footer_note}} font-style: normal;{{/if}}"><strong>Notes:</strong> {{footer_note}}</p>
-  </div>`
-}
-
 // CalculationHTML returns the HTML body for the default Calculation Statement.
-// All method-a/b/c branching is resolved upstream into billing_method.* fields
-// (see BillingMethodView / resolveBillingMethod) — this template only reads
-// flat variables, no nested conditionals.
 func CalculationHTML() string {
 	// Build patient fees table
 	patientFeesTable := DataTable(TableConfig{
@@ -95,5 +85,5 @@ func CalculationHTML() string {
   %s
 
   %s
-</div>`, Header("CALCULATION STATEMENT", "Statement No.", DefaultPreparedForBanner()), patientFeesTable, ServiceFeeIntroRowCalculation(), settlementTable, FooterNotesBox())
+</div>`, Header("CALCULATION STATEMENT", "Statement No.", DefaultPreparedForBanner()), patientFeesTable, ServiceFeeIntroRowCalculation(), settlementTable, FooterNotesSection("{{footer_note}}"))
 }
