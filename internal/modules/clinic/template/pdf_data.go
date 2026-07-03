@@ -69,20 +69,6 @@ func ApplyPDFCollections(data *InvoiceData, items []InvoiceItem, sections []Invo
 		case "REMITTANCE_INVOICE", "REMITTANCE_ADVICE":
 			remittanceDocNo = sec.DocumentNumber
 
-			if sec.PaymentMethod != nil {
-				data.CustomPaymentMethod = *sec.PaymentMethod
-				data.PaymentMethodLabel = *sec.PaymentMethod
-			}
-			if sec.AccountName != nil {
-				data.CustomPaymentAccountName = *sec.AccountName
-			}
-			if sec.Bsb != nil {
-				data.CustomPaymentBsb = *sec.Bsb
-			}
-			if sec.AccountNumber != nil {
-				data.CustomPaymentAccount = *sec.AccountNumber
-			}
-
 			if sec.PaymentDate != nil && *sec.PaymentDate != "" {
 				if parsed, err := time.Parse("2006-01-02", *sec.PaymentDate); err == nil {
 					data.PaymentDateDisplay = parsed.Format("02 January 2006")

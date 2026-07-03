@@ -314,10 +314,6 @@ type InvoiceSectionMeta struct {
 	ID               uuid.UUID `db:"id"`
 	SectionType      string    `db:"section_type"`
 	DocumentNumber   string    `db:"document_number"`
-	PaymentMethod    *string   `db:"payment_method"`
-	AccountName      *string   `db:"account_name"`
-	Bsb              *string   `db:"bsb_number"`
-	AccountNumber    *string   `db:"account_number"`
 	PaymentDate      *string   `db:"payment_date"`
 	PaymentReference *string   `db:"payment_reference"`
 }

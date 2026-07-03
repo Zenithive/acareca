@@ -418,10 +418,6 @@ func (r *Repository) GetInvoiceSectionMeta(ctx context.Context, invoiceId uuid.U
 			id,
 			COALESCE(invoice_section::text, '') AS section_type,
 			COALESCE(document_number, '') AS document_number,
-			payment_method,
-			account_name,
-			bsb_number,
-			account_number,
 			payment_date::text AS payment_date,
 			payment_reference
 		FROM tbl_map_invoice_section

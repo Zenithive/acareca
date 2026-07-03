@@ -77,7 +77,13 @@ BEGIN
         'CALCULATION_STATEMENT',
         'SFA_INVOICE',
         'REMITTANCE_INVOICE',
-        'RCTI'
+        'RCTI',
+        'PATIENT_FEE',
+        'TREATMENT_COST', 
+        'NET_PATIENT_FEES', 
+        'COMMISSION', 
+        'NET_SETTLEMENT', 
+        'SERVICE_FACILITY'
     );
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
