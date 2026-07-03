@@ -22,8 +22,8 @@ type SectionType string
 
 const (
 	CALCULATIONSTATEMENT SectionType = "CALCULATION_STATEMENT"
-	TAXINVOICE           SectionType = "TAX_INVOICE"
-	REMITTANCEINVOICE    SectionType = "REMITTANCE_ADVICE"
+	TAXINVOICE           SectionType = "SFA_INVOICE"
+	REMITTANCEINVOICE    SectionType = "REMITTANCE_INVOICE"
 	RCTI                 SectionType = "RCTI"
 )
 
