@@ -1,6 +1,5 @@
 -- +goose Up
 -- +goose StatementBegin
-
 -- Add parent_id column to tbl_invoice_item to support nested entries (children)
 ALTER TABLE tbl_invoice_item
     ADD COLUMN IF NOT EXISTS parent_id UUID,
@@ -33,15 +32,39 @@ ALTER TABLE tbl_map_invoice_section
 ALTER TABLE tbl_invoice_item
     ADD COLUMN IF NOT EXISTS is_final BOOLEAN DEFAULT false;
 
+CREATE TYPE invoice_method AS ENUM ('SFA_CLINIC_COLLECTS', 'SFA_DENTIST_COLLECTS', 'INDEPENDENT_CONTRACTOR');
+
+ALTER TABLE tbl_invoice 
+    ADD COLUMN invoice_method invoice_method NOT NULL DEFAULT 'SFA_CLINIC_COLLECTS';
+
+CREATE TYPE invoice_section_v2 AS ENUM (
+    'CALCULATION_STATEMENT',
+    'SFA_INVOICE',
+    'REMITTANCE_INVOICE',
+    'RCTI'
+);
+
+ALTER TABLE tbl_map_invoice_section
+    DROP COLUMN invoice_section,
+    ADD COLUMN invoice_section invoice_section_v2;
+
+
+CREATE TYPE contact_person_role AS ENUM (
+    'DENTIST',
+    'PATIENT'
+);
+
+ALTER TABLE tbl_clinic_contact_person
+    ADD COLUMN IF NOT EXISTS role contact_person_role DEFAULT 'PATIENT';
 
 
 -- +goose StatementEnd
 
-
 -- +goose Down
 -- +goose StatementBegin
 
--- Rename bsb back to bsb_number if it exists
+
+
 DO $$
 BEGIN
     IF EXISTS (
@@ -73,4 +96,18 @@ ALTER TABLE tbl_invoice_item
     DROP CONSTRAINT IF EXISTS fk_invoice_item_parent,
     DROP COLUMN IF EXISTS parent_id;
 
+ALTER TABLE tbl_invoice 
+    DROP COLUMN invoice_method;
+
+DROP TYPE IF EXISTS invoice_method;
+DROP TYPE IF EXISTS invoice_section_v2;
+
+ALTER TABLE tbl_map_invoice_section
+    DROP COLUMN invoice_section,
+    ADD COLUMN invoice_section invoice_section NOT NULL;
+
+DROP TYPE IF EXISTS contact_person_role;
+
+ALTER TABLE tbl_clinic_contact_person
+    DROP COLUMN IF EXISTS role;
 -- +goose StatementEnd
