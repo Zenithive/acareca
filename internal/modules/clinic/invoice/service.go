@@ -94,9 +94,9 @@ func (s *Service) Create(ctx context.Context, invoice *RqInvoice) error {
 	}
 
 	if invoice.Settings != nil {
-		for _, sec := range sections {
-			if sec.TemplateID != uuid.Nil {
-				if err := s.syncTemplateSettings(ctx, inv.ID, inv.ClinicID, sec.TemplateID, invoice.Settings); err != nil {
+		for _, sec := range inv.Sections {
+			if *sec.InvoiceID != uuid.Nil {
+				if err := s.syncTemplateSettings(ctx, inv.ID, invoice.Settings); err != nil {
 					log.Printf("[SETTINGS-WARN] Failed propagating structural setting values: %v", err)
 				}
 			}
@@ -147,8 +147,18 @@ func (s *Service) List(ctx context.Context, filter *Filter) (*util.RsList, error
 		rsInvoices = append(rsInvoices, invoice.ToRsInvoiceSummary())
 	}
 
+	defaultLimit := 10
+	defaultOffset := 0
+
+	if filter.Limit != nil {
+		defaultLimit = *filter.Limit
+	}
+	if filter.Offset != nil {
+		defaultOffset = *filter.Offset
+	}
+
 	var rsList util.RsList
-	rsList.MapToList(rsInvoices, int(total), *filter.Offset, *filter.Limit)
+	rsList.MapToList(rsInvoices, int(total), defaultOffset, defaultLimit)
 	return &rsList, nil
 }
 
@@ -196,8 +206,8 @@ func (s *Service) Update(ctx context.Context, invoice *RqUpdateInvoice) error {
 
 	if invoice.Settings != nil {
 		for _, sec := range sections {
-			if sec.TemplateID != uuid.Nil {
-				if err := s.syncTemplateSettings(ctx, *invoice.ID, invoice.ClinicID, sec.TemplateID, invoice.Settings); err != nil {
+			if *sec.InvoiceID != uuid.Nil {
+				if err := s.syncTemplateSettings(ctx, *invoice.ID, invoice.Settings); err != nil {
 					log.Printf("[SETTINGS-WARN] Failed syncing updated layout template adjustments: %v", err)
 				}
 			}
@@ -288,70 +298,61 @@ func (s *Service) compileInvoicePDF(ctx context.Context, inv *RsInvoice) (string
 }
 
 // Internal bridge mapper to parse and route structural customization configurations safely
-func (s *Service) syncTemplateSettings(ctx context.Context, invoiceID uuid.UUID, clinicID uuid.UUID, templateID uuid.UUID, src *RqInvoiceSetting) error {
-
-	existingSetting, err := s.tplRepo.GetInvoiceSetting(ctx, clinicID, invoiceID, []uuid.UUID{templateID})
-	if err != nil {
-		return fmt.Errorf("failed verifying database settings mapping context: %w", err)
+func (s *Service) syncTemplateSettings(ctx context.Context, invoiceID uuid.UUID, src *RqInvoiceSetting) error {
+	parseUUID := func(str *string) *uuid.UUID {
+		if str == nil || *str == "" {
+			return nil
+		}
+		if parsed, err := uuid.Parse(*str); err == nil {
+			return &parsed
+		}
+		return nil
 	}
 
-	var existingMapping *template.Mapping
-	if existingSetting != nil && existingSetting.MappingId != nil {
-		existingMapping, err = s.tplRepo.GetMapping(ctx, *existingSetting.MappingId)
-		if err != nil {
-			return fmt.Errorf("failed verifying transactional database junction state: %w", err)
-		}
+	existingSetting, err := s.tplRepo.GetInvoiceSetting(ctx, invoiceID)
+	if err != nil {
+		return fmt.Errorf("failed to fetch invoice settings context: %w", err)
 	}
 
 	var targetSettingID uuid.UUID
-	var targetMappingID uuid.UUID
-	isNewOverride := true
+	var isNewOverride bool
 
-	if existingMapping != nil && existingMapping.InvoiceID != nil && *existingMapping.InvoiceID == invoiceID {
-		isNewOverride = false
-		targetMappingID = existingMapping.ID
-		targetSettingID = existingMapping.SettingID
-	} else {
+	if existingSetting == nil {
+		// No record exists -> create a new setting
 		targetSettingID = uuid.New()
-		targetMappingID = uuid.New()
+		isNewOverride = true
+	} else if existingSetting.InvoiceId == nil {
+		// Record exists but is a global default setting -> create a new setting
+		targetSettingID = uuid.New()
+		isNewOverride = true
+	} else {
+		// Custom record exists for this invoice -> Override the exising setting
+		targetSettingID = existingSetting.Id
+		isNewOverride = false
 	}
 
 	dbSetting := template.Setting{
 		Id:               targetSettingID,
-		TemplateId:       templateID,
+		InvoiceId:        &invoiceID,
 		PrimaryColor:     lo.FromPtr(src.PrimaryColor),
 		AccentColor:      lo.FromPtr(src.AccentColor),
 		BodyFontFamily:   lo.FromPtr(src.BodyFontFamily),
 		HeaderFontFamily: lo.FromPtr(src.HeaderFontFamily),
 		IsLogo:           lo.FromPtr(src.IsLogo),
-		LogoId:           src.LogoID,
-		LetterHeadId:     src.LetterheadID,
-		FooterId:         src.FooterID,
+		LogoId:           parseUUID(src.LogoID),
 		TermText:         src.TermsText,
+		PaymentTerms:     src.PaymentTerms,
 		IsWaterMark:      lo.FromPtr(src.IsWatermark),
 		WaterMarkText:    src.WatermarkText,
-		IsTax:            lo.FromPtr(src.IsTax),
 		TableStyle:       src.TableStyle,
-		MappingId:        &targetMappingID,
 	}
 
 	if isNewOverride {
 		if err := s.tplRepo.CreateSetting(ctx, &dbSetting); err != nil {
 			return fmt.Errorf("failed allocating specific template layout profile: %w", err)
 		}
-
-		m := template.Mapping{
-			ID:         targetMappingID,
-			InvoiceID:  &invoiceID,
-			TemplateID: templateID,
-			SettingID:  targetSettingID,
-			ClinicID:   &clinicID,
-		}
-		if err := s.tplRepo.CreateMapping(ctx, &m); err != nil {
-			return fmt.Errorf("failed linking relational structural mapping context: %w", err)
-		}
 	} else {
-		if err := s.tplRepo.UpdateSetting(ctx, &dbSetting, targetSettingID); err != nil {
+		if err := s.tplRepo.UpdateSetting(ctx, &dbSetting, invoiceID); err != nil {
 			return fmt.Errorf("failed overwriting specific layout configuration settings profile: %w", err)
 		}
 	}

@@ -46,9 +46,10 @@ func (r *repository) Create(ctx context.Context, contact Contact) (Contact, erro
 				email,
 				website,
 				abn,
-				note
+				note,
+				role
 			)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
 			`,
 			contact.ID,
 			contact.ClinicId,
@@ -59,6 +60,7 @@ func (r *repository) Create(ctx context.Context, contact Contact) (Contact, erro
 			contact.Website,
 			contact.ABN,
 			contact.Note,
+			contact.Role,
 		)
 		if err != nil {
 			return err
@@ -187,6 +189,7 @@ func (r *repository) Get(ctx context.Context, id uuid.UUID) (Contact, error) {
 			COALESCE(website, ''),
 			COALESCE(abn, ''),
 			COALESCE(note, ''),
+			role,
 			created_at,
 			updated_at
 		FROM tbl_clinic_contact_person
@@ -204,6 +207,7 @@ func (r *repository) Get(ctx context.Context, id uuid.UUID) (Contact, error) {
 		&contact.Website,
 		&contact.ABN,
 		&contact.Note,
+		&contact.Role,
 		&contact.CreatedAt,
 		&contact.UpdatedAt,
 	)
@@ -279,6 +283,7 @@ func (r *repository) List(ctx context.Context, clinicID uuid.UUID, f common.Filt
 		"email":      "email",
 		"phone":      "phone",
 		"abn":        "abn",
+		"role":       "role",
 		"created_at": "created_at",
 	}
 
@@ -296,7 +301,7 @@ func (r *repository) List(ctx context.Context, clinicID uuid.UUID, f common.Filt
 		return nil, 0, fmt.Errorf("count contacts: %w", err)
 	}
 
-	selectQueryBase := `SELECT id, clinic_id, fname, lname, COALESCE(phone, ''), email, COALESCE(website, ''), COALESCE(abn, ''), COALESCE(note, ''), created_at, updated_at ` + baseQuery
+	selectQueryBase := `SELECT id, clinic_id, fname, lname, COALESCE(phone, ''), email, COALESCE(website, ''), COALESCE(abn, ''), COALESCE(note, ''), role, created_at, updated_at ` + baseQuery
 	itemsQuery, itemsArgsPart := common.BuildQuery(selectQueryBase, f, allowedColumns, searchCols, false)
 	itemsArgs := append(baseArgs, itemsArgsPart...)
 
@@ -319,6 +324,7 @@ func (r *repository) List(ctx context.Context, clinicID uuid.UUID, f common.Filt
 			&contact.Website,
 			&contact.ABN,
 			&contact.Note,
+			&contact.Role,
 			&contact.CreatedAt,
 			&contact.UpdatedAt,
 		)
@@ -352,8 +358,9 @@ func (r *repository) Update(ctx context.Context, contact Contact) error {
 				website = $6,
 				abn = $7,
 				note = $8,
+				role = $9,
 				updated_at = NOW()
-			WHERE id = $9
+			WHERE id = $10
 			AND deleted_at IS NULL
 			`,
 			contact.ClinicId,
@@ -364,6 +371,7 @@ func (r *repository) Update(ctx context.Context, contact Contact) error {
 			contact.Website,
 			contact.ABN,
 			contact.Note,
+			contact.Role,
 			contact.ID,
 		)
 		if err != nil {

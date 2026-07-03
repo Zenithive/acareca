@@ -30,20 +30,17 @@ type RqInvoice struct {
 }
 
 type RqInvoiceSetting struct {
-	PrimaryColor     *string    `json:"primaryColor,omitempty"`
-	AccentColor      *string    `json:"accentColor,omitempty"`
-	BodyFontFamily   *string    `json:"bodyFontFamily,omitempty"`
-	HeaderFontFamily *string    `json:"headerFontFamily,omitempty"`
-	IsLogo           *bool      `json:"isLogo,omitempty"`
-	LogoID           *uuid.UUID `json:"logoId,omitempty"`
-	LetterheadID     *uuid.UUID `json:"letterheadId,omitempty"`
-	FooterID         *uuid.UUID `json:"footerId,omitempty"`
-	TermsText        *string    `json:"termsText,omitempty"`
-	PaymentTerms     *string    `json:"paymentTerms,omitempty"`
-	IsWatermark      *bool      `json:"isWatermark,omitempty"`
-	WatermarkText    *string    `json:"watermarkText,omitempty"`
-	IsTax            *bool      `json:"isTax,omitempty"`
-	TableStyle       *string    `json:"tableStyle,omitempty"`
+	PrimaryColor     *string `json:"primaryColor,omitempty"`
+	AccentColor      *string `json:"accentColor,omitempty"`
+	BodyFontFamily   *string `json:"bodyFontFamily,omitempty"`
+	HeaderFontFamily *string `json:"headerFontFamily,omitempty"`
+	IsLogo           *bool   `json:"isLogo,omitempty"`
+	LogoID           *string `json:"logoId,omitempty"`
+	TermsText        *string `json:"termsText,omitempty"`
+	PaymentTerms     *string `json:"paymentTerms,omitempty"`
+	IsWatermark      *bool   `json:"isWatermark,omitempty"`
+	WatermarkText    *string `json:"watermarkText,omitempty"`
+	TableStyle       *string `json:"tableStyle,omitempty"`
 }
 
 func (r *RqInvoice) ToInvoice() *Invoice {

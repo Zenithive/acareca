@@ -128,3 +128,10 @@ const (
 	InvoiceTypeSFADentistCollects    InvoiceType = "SFA_DENTIST_COLLECTS"
 	InvoiceTypeIndependentContractor InvoiceType = "INDEPENDENT_CONTRACTOR"
 )
+
+type ClinicContactPersonRole string
+
+const (
+	RoleDentist ClinicContactPersonRole = "DENTIST"
+	RolePatient ClinicContactPersonRole = "PATIENT"
+)

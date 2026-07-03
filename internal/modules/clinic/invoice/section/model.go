@@ -83,7 +83,6 @@ func (rq *RqSection) ToSection() *Section {
 	return &Section{
 		ID:               sectionID,
 		InvoiceID:        rq.InvoiceID,
-		TemplateID:       rq.TemplateID,
 		InvoiceSection:   rq.SectionType,
 		DocumentNumber:   rq.DocumentNumber,
 		TaxMethod:        rq.TaxMethod,
@@ -111,10 +110,6 @@ func (rq *RqUpdateSection) ToSection() *Section {
 
 	if rq.InvoiceID != nil {
 		section.InvoiceID = rq.InvoiceID
-	}
-
-	if rq.TemplateID != nil {
-		section.TemplateID = *rq.TemplateID
 	}
 
 	if rq.SectionType != nil {
@@ -194,7 +189,6 @@ func (rq *RqUpdateSection) ToSection() *Section {
 type Section struct {
 	ID               uuid.UUID    `db:"id"`
 	InvoiceID        *uuid.UUID   `db:"invoice_id"`
-	TemplateID       uuid.UUID    `db:"template_id"`
 	InvoiceSection   SectionType  `db:"invoice_section"`
 	DocumentNumber   string       `db:"document_number"`
 	TaxMethod        *TaxMethod   `db:"tax_method"`
@@ -227,7 +221,6 @@ func (s *Section) ToRsSection() *RsSection {
 	return &RsSection{
 		ID:               s.ID,
 		InvoiceID:        s.InvoiceID,
-		TemplateID:       s.TemplateID,
 		SectionType:      s.InvoiceSection,
 		DocumentNumber:   s.DocumentNumber,
 		TaxMethod:        s.TaxMethod,
