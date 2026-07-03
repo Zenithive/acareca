@@ -136,7 +136,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 	coaRepo := coa.NewRepository(dbConn)
 	coaSvc := coa.NewService(coaRepo, dbConn, auditSvc)
 	coaHandler := coa.NewHandler(coaSvc)
-	coa.RegisterRoutes(v1.Group("/coa"), coaHandler, cfg, permAdapter)
+	coa.RegisterRoutes(v1.Group("/coa"), coaHandler, cfg, permAdapter, dbConn)
 
 	// ============ PRACTITIONER SERVICE (cross-module dependency) ============
 	practitionerRepo := practitioner.NewRepository(dbConn)
@@ -170,42 +170,42 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 	clinicSvc := clinic.NewService(dbConn, clinicRepo, accountant.NewRepository(dbConn), authRepo, fileRepo, auditSvc, notificationSvc, authSvc, invitationRepo, invitationSvc, adminRepo)
 
 	clinicHandler := clinic.NewHandler(clinicSvc)
-	clinic.RegisterRoutes(v1, clinicHandler, cfg, permAdapter)
+	clinic.RegisterRoutes(v1, clinicHandler, cfg, permAdapter, dbConn)
 
 	// ============ ENGINE MODULES (P&L, BAS, Balance Sheet) ============
 	plRepo := pl.NewRepository(dbConn)
 	plSvc := pl.NewService(plRepo, clinicRepo, accountantRepo, practitionerSvc, authRepo, auditSvc, invitationRepo, authSvc, notificationSvc, adminRepo)
 	plHandler := pl.NewHandler(plSvc, invitationSvc, accountantRepo)
-	pl.RegisterRoutes(v1, plHandler, cfg, permAdapter)
+	pl.RegisterRoutes(v1, plHandler, cfg, permAdapter, dbConn)
 
 	basRepo := bas.NewRepository(dbConn)
 	basSvc := bas.NewService(basRepo, accountantRepo, auditSvc, clinicRepo, fyRepo, authRepo, practitionerSvc, invitationRepo, authSvc, notificationSvc, adminRepo)
 	basHandler := bas.NewHandler(basSvc, invitationSvc)
-	bas.RegisterRoutes(v1, basHandler, cfg)
+	bas.RegisterRoutes(v1, basHandler, cfg, dbConn)
 
 	// Equity service for automatic owner fund calculations
 	equitySvc := equity.NewService(dbConn, fyRepo)
 	equityHandler := equity.NewHandler(equitySvc)
-	equity.RegisterRoutes(v1, equityHandler, cfg)
+	equity.RegisterRoutes(v1, equityHandler, cfg, dbConn)
 
 	bsRepo := bs.NewRepository(dbConn)
 	bsSvc := bs.NewService(bsRepo, equitySvc, dbConn, auditSvc, authRepo, invitationSvc, accountantRepo, practitionerSvc, invitationRepo, authSvc, notificationSvc, adminRepo)
 	bsHandler := bs.NewHandler(bsSvc, invitationSvc)
-	bs.RegisterRoutes(v1, bsHandler, cfg)
+	bs.RegisterRoutes(v1, bsHandler, cfg, dbConn)
 
 	// ============ SETTING MODULE ============
 	settingGroup := v1.Group("/setting")
 	settingRepo := setting.NewRepository(dbConn)
 	settingSvc := setting.NewService(dbConn, settingRepo, auditSvc)
 	settingHandler := setting.NewHandler(settingSvc)
-	setting.RegisterRoutes(settingGroup, settingHandler, cfg)
+	setting.RegisterRoutes(settingGroup, settingHandler, cfg, dbConn)
 
 	// ============ MODULE-SPECIFIC ROUTES ============
 	// Register admin routes
 	RegisterAdminRoutes(v1, cfg, dbConn, auditSvc, stripeClient)
 
 	// Register practitioner routes
-	RegisterPractitionerRoutes(v1, cfg, practitionerSvc)
+	RegisterPractitionerRoutes(v1, cfg, practitionerSvc, dbConn)
 
 	// Register accountant routes
 	RegisterAccountantRoutes(v1, cfg, accountantSvc)

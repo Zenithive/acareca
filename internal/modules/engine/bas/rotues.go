@@ -4,11 +4,12 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/iamarpitzala/acareca/internal/shared/middleware"
 	"github.com/iamarpitzala/acareca/pkg/config"
+	"github.com/jmoiron/sqlx"
 )
 
-func RegisterRoutes(rg *gin.RouterGroup, h IHandler, cfg *config.Config) {
+func RegisterRoutes(rg *gin.RouterGroup, h IHandler, cfg *config.Config, db *sqlx.DB) {
 	bas := rg.Group("/bas")
-	bas.Use(middleware.Auth(cfg), middleware.RequireActiveSubscription())
+	bas.Use(middleware.Auth(cfg), middleware.RequireActiveSubscription(db))
 
 	bas.GET("/report", h.GetReport)
 	bas.GET("/bas-preparation", h.GetBASPreparation)

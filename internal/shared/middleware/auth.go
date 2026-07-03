@@ -8,9 +8,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/shared/response"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/iamarpitzala/acareca/pkg/config"
+	"github.com/jmoiron/sqlx"
 )
 
 var (
@@ -98,21 +100,59 @@ func Auth(cfg *config.Config) gin.HandlerFunc {
 }
 
 // RequireActiveSubscription blocks practitioner requests when subscription_status is PENDING.
+// If JWT says PENDING, checks the database as a fallback — if DB says COMPLETE, allows through.
+// This handles the stale token case after a successful Stripe payment.
 // Apply this only on business routes — NOT on auth, billing, or subscription routes.
-func RequireActiveSubscription() gin.HandlerFunc {
+func RequireActiveSubscription(db *sqlx.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		role, _ := c.Get("role")
 		if role != util.RolePractitioner {
 			c.Next()
 			return
 		}
+		
 		status, _ := c.Get(util.SubscriptionStatusKey)
-		if status != util.SubscriptionStatusComplete {
-			response.Error(c, http.StatusPaymentRequired, errors.New("subscription payment required"))
+		
+		// If JWT says COMPLETE, allow immediately (hot path)
+		if status == util.SubscriptionStatusComplete {
+			c.Next()
+			return
+		}
+		
+		// JWT says PENDING — check DB as fallback (handles stale token after payment)
+		entityID, exists := c.Get(util.EntityIDKey)
+		if !exists {
+			response.Error(c, http.StatusUnauthorized, errors.New("entity id not found"))
 			c.Abort()
 			return
 		}
-		c.Next()
+		
+		practitionerID, ok := entityID.(uuid.UUID)
+		if !ok {
+			response.Error(c, http.StatusInternalServerError, errors.New("invalid entity id type"))
+			c.Abort()
+			return
+		}
+		
+		// Query DB for latest subscription_status
+		var dbStatus string
+		query := `SELECT subscription_status FROM tbl_practitioner WHERE id = $1 AND deleted_at IS NULL`
+		if err := db.GetContext(c.Request.Context(), &dbStatus, query, practitionerID); err != nil {
+			// DB error — reject to be safe
+			response.Error(c, http.StatusInternalServerError, errors.New("failed to verify subscription status"))
+			c.Abort()
+			return
+		}
+		
+		// If DB says COMPLETE, allow through even though JWT is stale
+		if dbStatus == util.SubscriptionStatusComplete {
+			c.Next()
+			return
+		}
+		
+		// Both JWT and DB say PENDING — block
+		response.Error(c, http.StatusPaymentRequired, errors.New("subscription payment required"))
+		c.Abort()
 	}
 }
 

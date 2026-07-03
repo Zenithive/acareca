@@ -4,16 +4,17 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/iamarpitzala/acareca/internal/shared/middleware"
 	"github.com/iamarpitzala/acareca/pkg/config"
+	"github.com/jmoiron/sqlx"
 )
 
-func RegisterRoutes(rg *gin.RouterGroup, h IHandler, cfg *config.Config, permAdapter *middleware.PermissionAdapter) {
+func RegisterRoutes(rg *gin.RouterGroup, h IHandler, cfg *config.Config, permAdapter *middleware.PermissionAdapter, db *sqlx.DB) {
 	rg.GET("/account-types", h.ListAccountTypes)
 	rg.GET("/account-types/:id", h.GetAccountType)
 	rg.GET("/account-taxes", h.ListAccountTaxes)
 	rg.GET("/account-taxes/:id", h.GetAccountTax)
 
 	accounts := rg.Group("/chart-of-account")
-	accounts.Use(middleware.Auth(cfg), middleware.RequireActiveSubscription(), middleware.AuditContext(), middleware.SetPractitionerIDFromAuth())
+	accounts.Use(middleware.Auth(cfg), middleware.RequireActiveSubscription(db), middleware.AuditContext(), middleware.SetPractitionerIDFromAuth())
 	{
 		accounts.GET("", h.ListChartOfAccount)
 		accounts.GET("/:id", h.GetChartOfAccount)

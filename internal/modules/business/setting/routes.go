@@ -4,10 +4,11 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/iamarpitzala/acareca/internal/shared/middleware"
 	"github.com/iamarpitzala/acareca/pkg/config"
+	"github.com/jmoiron/sqlx"
 )
 
-func RegisterRoutes(rg *gin.RouterGroup, h IHandler, cfg *config.Config) {
-	rg.Use(middleware.Auth(cfg), middleware.RequireActiveSubscription(), middleware.AuditContext())
+func RegisterRoutes(rg *gin.RouterGroup, h IHandler, cfg *config.Config, db *sqlx.DB) {
+	rg.Use(middleware.Auth(cfg), middleware.RequireActiveSubscription(db), middleware.AuditContext())
 	rg.POST("", h.CreatePractitioner)
 	rg.GET("list", h.ListPractitioners)
 	rg.GET("/by-user/:user_id", h.GetPractitionerByUserID)
