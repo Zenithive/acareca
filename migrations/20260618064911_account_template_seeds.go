@@ -827,7 +827,7 @@ func upAccountTemplateSeeds(ctx context.Context, tx *sql.Tx) error {
 			Name:            "Retained Earnings",
 			AccountTypeName: EQUITY,
 			AccountTaxName:  BAS_EXCLUDED,
-			IsSystem:        false,
+			IsSystem:        true,
 			IsCos:           false,
 			IsCapital:       false,
 		},

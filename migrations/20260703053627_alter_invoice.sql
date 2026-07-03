@@ -1,9 +1,20 @@
 -- +goose Up
 -- +goose StatementBegin
 
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'paid_by') THEN
+        CREATE TYPE paid_by AS ENUM (
+            'Dentist',
+            'Clinic'
+        );
+    END IF;
+END $$;
+
 -- Add parent_id column to tbl_invoice_item to support nested entries (children)
 ALTER TABLE tbl_invoice_item
-    ADD COLUMN IF NOT EXISTS parent_id UUID;
+    ADD COLUMN IF NOT EXISTS parent_id UUID,
+    ADD COLUMN IF NOT EXISTS paid_by paid_by NULL;
 
 DO $$
 BEGIN
@@ -135,7 +146,8 @@ ALTER TABLE tbl_map_invoice_section
 DROP INDEX IF EXISTS idx_invoice_item_parent_id;
 ALTER TABLE tbl_invoice_item
     DROP CONSTRAINT IF EXISTS fk_invoice_item_parent,
-    DROP COLUMN IF EXISTS parent_id;
+    DROP COLUMN IF EXISTS parent_id,
+    DROP COLUMN IF EXISTS paid_by;
 
 ALTER TABLE tbl_invoice
     DROP COLUMN IF EXISTS invoice_method;
