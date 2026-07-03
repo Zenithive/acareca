@@ -14,7 +14,7 @@ import (
 	"github.com/iamarpitzala/acareca/pkg/config"
 )
 
-type IPDFService interface {
+type IPDF interface {
 	GeneratePDF(ctx context.Context, rq template.RqGeneratePDF) ([]byte, error)
 	GenerateMultiPDF(ctx context.Context, templateIds []uuid.UUID, data common.Invoice) ([]byte, error)
 	DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateIds []uuid.UUID, invoiceId uuid.UUID) ([]byte, string, error)
@@ -30,14 +30,7 @@ type PDFService struct {
 	cfg          *config.Config
 }
 
-func NewPDFService(
-	templateRepo repository.ITemplateRepository,
-	settingRepo repository.ISettingRepository,
-	encryption IEncryptionService,
-	renderer rendering.IPDFRenderer,
-	builder *rendering.TemplateBuilder,
-	cfg *config.Config,
-) IPDFService {
+func NewPDFService(templateRepo repository.ITemplateRepository, settingRepo repository.ISettingRepository, encryption IEncryptionService, renderer rendering.IPDFRenderer, builder *rendering.TemplateBuilder, cfg *config.Config) IPDF {
 	return &PDFService{
 		templateRepo: templateRepo,
 		settingRepo:  settingRepo,

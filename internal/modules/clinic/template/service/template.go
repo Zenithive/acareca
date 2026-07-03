@@ -12,7 +12,7 @@ import (
 )
 
 // ITemplateService handles template CRUD operations
-type ITemplateService interface {
+type ITemplate interface {
 	Create(ctx context.Context, rq template.RqGlobalTemplate) (*common.RsTemplate, error)
 	Update(ctx context.Context, id uuid.UUID, rq template.RqGlobalTemplate) (*common.RsTemplate, error)
 	Delete(ctx context.Context, id uuid.UUID) error
@@ -22,21 +22,21 @@ type ITemplateService interface {
 	ValidateAccess(ctx context.Context, templateIds []uuid.UUID) error
 }
 
-type TemplateService struct {
+type Template struct {
 	repo       repository.ITemplateRepository
 	encryption IEncryptionService
-	settingSvc ISettingService
+	settingSvc ISetting
 }
 
-func NewTemplateService(repo repository.ITemplateRepository, encryption IEncryptionService, settingSvc ISettingService) ITemplateService {
-	return &TemplateService{
+func NewTemplateService(repo repository.ITemplateRepository, encryption IEncryptionService, settingSvc ISetting) ITemplate {
+	return &Template{
 		repo:       repo,
 		encryption: encryption,
 		settingSvc: settingSvc,
 	}
 }
 
-func (s *TemplateService) Create(ctx context.Context, rq template.RqGlobalTemplate) (*common.RsTemplate, error) {
+func (s *Template) Create(ctx context.Context, rq template.RqGlobalTemplate) (*common.RsTemplate, error) {
 	// Encrypt content
 	htmlBlob, cssBlob, err := s.encryption.EncryptTemplate(rq.Html, rq.Css)
 	if err != nil {
@@ -71,7 +71,7 @@ func (s *TemplateService) Create(ctx context.Context, rq template.RqGlobalTempla
 	return &rs, nil
 }
 
-func (s *TemplateService) Update(ctx context.Context, id uuid.UUID, rq template.RqGlobalTemplate) (*common.RsTemplate, error) {
+func (s *Template) Update(ctx context.Context, id uuid.UUID, rq template.RqGlobalTemplate) (*common.RsTemplate, error) {
 	// Encrypt content
 	htmlBlob, cssBlob, err := s.encryption.EncryptTemplate(rq.Html, rq.Css)
 	if err != nil {
@@ -104,7 +104,7 @@ func (s *TemplateService) Update(ctx context.Context, id uuid.UUID, rq template.
 	return &rs, nil
 }
 
-func (s *TemplateService) Get(ctx context.Context, id uuid.UUID) (*common.RsTemplate, error) {
+func (s *Template) Get(ctx context.Context, id uuid.UUID) (*common.RsTemplate, error) {
 	t, err := s.repo.Get(ctx, id)
 	if err != nil {
 		return nil, err
@@ -123,15 +123,15 @@ func (s *TemplateService) Get(ctx context.Context, id uuid.UUID) (*common.RsTemp
 	return &rs, nil
 }
 
-func (s *TemplateService) Delete(ctx context.Context, id uuid.UUID) error {
+func (s *Template) Delete(ctx context.Context, id uuid.UUID) error {
 	return s.repo.Delete(ctx, id)
 }
 
-func (s *TemplateService) List(ctx context.Context, method string) (*util.RsList, error) {
+func (s *Template) List(ctx context.Context, method string) (*util.RsList, error) {
 	return s.repo.List(ctx, method)
 }
 
-func (s *TemplateService) BulkCreate(ctx context.Context) (*[]common.RsTemplate, error) {
+func (s *Template) BulkCreate(ctx context.Context) (*[]common.RsTemplate, error) {
 	rqs := template.DefaultTemplates()
 	templates := make([]common.Template, 0, len(rqs))
 
@@ -174,7 +174,7 @@ func (s *TemplateService) BulkCreate(ctx context.Context) (*[]common.RsTemplate,
 	return &rs, nil
 }
 
-func (s *TemplateService) ValidateAccess(ctx context.Context, templateIds []uuid.UUID) error {
+func (s *Template) ValidateAccess(ctx context.Context, templateIds []uuid.UUID) error {
 	if len(templateIds) == 0 {
 		return template.ErrTemplateRequired
 	}

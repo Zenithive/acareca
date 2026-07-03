@@ -33,26 +33,28 @@ type IService interface {
 }
 
 type Service struct {
-	db          *sqlx.DB
-	repo        IRepository
-	cfg         *config.Config
-	mailer      *mail.Client
-	tplService  template.IService
-	clinicSvc   clinicauth.Service
-	settingRepo repository.ISettingRepository
-	itemRepo    item.IRepository
+	db           *sqlx.DB
+	repo         IRepository
+	cfg          *config.Config
+	mailer       *mail.Client
+	tplService   template.IService
+	clinicSvc    clinicauth.Service
+	settingRepo  repository.ISettingRepository
+	templateRepo repository.ITemplateRepository
+	itemRepo     item.IRepository
 }
 
-func NewService(db *sqlx.DB, repo IRepository, cfg *config.Config, tplService template.IService, clinicSvc clinicauth.Service, settingRepo repository.ISettingRepository) IService {
+func NewService(db *sqlx.DB, repo IRepository, cfg *config.Config, tplService template.IService, clinicSvc clinicauth.Service, settingRepo repository.ISettingRepository, templateRepo repository.ITemplateRepository) IService {
 	return &Service{
-		db:          db,
-		repo:        repo,
-		cfg:         cfg,
-		mailer:      mail.NewClient(cfg.ResendAPIKey, cfg.SenderEmail),
-		tplService:  tplService,
-		clinicSvc:   clinicSvc,
-		settingRepo: settingRepo,
-		itemRepo:    item.NewRepository(db),
+		db:           db,
+		repo:         repo,
+		cfg:          cfg,
+		mailer:       mail.NewClient(cfg.ResendAPIKey, cfg.SenderEmail),
+		tplService:   tplService,
+		clinicSvc:    clinicSvc,
+		settingRepo:  settingRepo,
+		templateRepo: templateRepo,
+		itemRepo:     item.NewRepository(db),
 	}
 }
 
@@ -220,7 +222,7 @@ func (s *Service) Update(ctx context.Context, invoice *RqUpdateInvoice) error {
 }
 
 func (s *Service) GetClinicTemplate(ctx context.Context, clinicID uuid.UUID) (*RsInvoiceMailTemplate, error) {
-	dbSubject, dbBody, err := s.documentRepo.GetSavedClinicMailTemplate(ctx, clinicID)
+	dbSubject, dbBody, err := s.templateRepo.GetClinicMailTemplate(ctx, clinicID)
 	if err != nil {
 		dbSubject, dbBody = "", ""
 	}
@@ -235,7 +237,7 @@ func (s *Service) GetClinicTemplate(ctx context.Context, clinicID uuid.UUID) (*R
 }
 
 func (s *Service) SaveClinicTemplate(ctx context.Context, clinicID uuid.UUID, rq *RqSaveMailTemplate) error {
-	return s.documentRepo.SaveClinicMailTemplate(ctx, clinicID, rq.Subject, rq.Body)
+	return s.templateRepo.SaveClinicMailTemplate(ctx, clinicID, rq.Subject, rq.Body)
 }
 
 func (s *Service) ResendInvoiceEmail(ctx context.Context, id uuid.UUID) error {
@@ -255,7 +257,7 @@ func (s *Service) ResendInvoiceEmail(ctx context.Context, id uuid.UUID) error {
 		return fmt.Errorf("failed to generate invoice attachment document: %w", err)
 	}
 
-	dbSubject, dbBody, err := s.documentRepo.GetSavedClinicMailTemplate(ctx, rsInvoice.ClinicID)
+	dbSubject, dbBody, err := s.templateRepo.GetClinicMailTemplate(ctx, rsInvoice.ClinicID)
 	if err != nil {
 		dbSubject, dbBody = "", ""
 	}

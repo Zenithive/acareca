@@ -62,6 +62,11 @@ func (c *Container) SettingRepo() repository.ISettingRepository {
 	return c.settingRepo
 }
 
+func (c *Container) TemplateRepo() repository.ITemplateRepository {
+	c.initRepositories()
+	return c.templateRepo
+}
+
 func (c *Container) Handler() IHandler {
 	c.hOnce.Do(func() {
 		c.handler = NewHandler(c.Service())

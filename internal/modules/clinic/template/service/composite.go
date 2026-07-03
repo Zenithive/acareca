@@ -13,10 +13,10 @@ import (
 )
 
 type CompositeService struct {
-	templateSvc ITemplateService
-	settingSvc  ISettingService
-	pdfSvc      IPDFService
-	syncSvc     ISyncService
+	templateSvc ITemplate
+	settingSvc  ISetting
+	pdfSvc      IPDF
+	syncSvc     ISync
 }
 
 func NewCompositeService(cfg *config.Config, templateRepo repository.ITemplateRepository, settingRepo repository.ISettingRepository) *CompositeService {
@@ -25,7 +25,7 @@ func NewCompositeService(cfg *config.Config, templateRepo repository.ITemplateRe
 	var templRepo repository.ITemplateRepository = templateRepo
 	var setRepo repository.ISettingRepository = settingRepo
 
-	settingSvc := NewSettingService(setRepo)
+	settingSvc := NewSetting(setRepo)
 
 	templateSvc := NewTemplateService(templRepo, encryptionSvc, settingSvc)
 
@@ -43,24 +43,40 @@ func NewCompositeService(cfg *config.Config, templateRepo repository.ITemplateRe
 	}
 }
 
-func (cs *CompositeService) BulkCreate(ctx context.Context) (*[]common.RsTemplate, error) {
-	return cs.templateSvc.BulkCreate(ctx)
+func (cs *CompositeService) BulkCreate(ctx context.Context) (*[]template.RsTemplate, error) {
+	commonRs, err := cs.templateSvc.BulkCreate(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return convertCommonRsTemplateSlice(commonRs), nil
 }
 
-func (cs *CompositeService) Create(ctx context.Context, rq template.RqGlobalTemplate) (*common.RsTemplate, error) {
-	return cs.templateSvc.Create(ctx, rq)
+func (cs *CompositeService) Create(ctx context.Context, rq template.RqGlobalTemplate) (*template.RsTemplate, error) {
+	commonRs, err := cs.templateSvc.Create(ctx, rq)
+	if err != nil {
+		return nil, err
+	}
+	return convertCommonRsTemplate(commonRs), nil
 }
 
-func (cs *CompositeService) Update(ctx context.Context, id uuid.UUID, rq template.RqGlobalTemplate) (*common.RsTemplate, error) {
-	return cs.templateSvc.Update(ctx, id, rq)
+func (cs *CompositeService) Update(ctx context.Context, id uuid.UUID, rq template.RqGlobalTemplate) (*template.RsTemplate, error) {
+	commonRs, err := cs.templateSvc.Update(ctx, id, rq)
+	if err != nil {
+		return nil, err
+	}
+	return convertCommonRsTemplate(commonRs), nil
 }
 
 func (cs *CompositeService) Delete(ctx context.Context, id uuid.UUID) error {
 	return cs.templateSvc.Delete(ctx, id)
 }
 
-func (cs *CompositeService) Get(ctx context.Context, id uuid.UUID) (*common.RsTemplate, error) {
-	return cs.templateSvc.Get(ctx, id)
+func (cs *CompositeService) Get(ctx context.Context, id uuid.UUID) (*template.RsTemplate, error) {
+	commonRs, err := cs.templateSvc.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return convertCommonRsTemplate(commonRs), nil
 }
 
 func (cs *CompositeService) List(ctx context.Context, method string) (*util.RsList, error) {
@@ -89,4 +105,44 @@ func (cs *CompositeService) DownloadPDF(ctx context.Context, clinicId uuid.UUID,
 
 func (cs *CompositeService) BulkSyncDefaults(ctx context.Context) error {
 	return cs.syncSvc.BulkSyncDefaults(ctx)
+}
+
+// convertCommonRsTemplate converts common.RsTemplate to template.RsTemplate
+func convertCommonRsTemplate(src *common.RsTemplate) *template.RsTemplate {
+	if src == nil {
+		return nil
+	}
+	return &template.RsTemplate{
+		Id:          src.Id,
+		Description: src.Description,
+		Name:        src.Name,
+		Html:        src.Html,
+		Css:         src.Css,
+		IsDefault:   src.IsDefault,
+		IsActive:    src.IsActive,
+		CreatedAt:   src.CreatedAt,
+		UpdatedAt:   src.UpdatedAt,
+	}
+}
+
+// convertCommonRsTemplateSlice converts a slice of common.RsTemplate to template.RsTemplate
+func convertCommonRsTemplateSlice(src *[]common.RsTemplate) *[]template.RsTemplate {
+	if src == nil {
+		return nil
+	}
+	result := make([]template.RsTemplate, len(*src))
+	for i, item := range *src {
+		result[i] = template.RsTemplate{
+			Id:          item.Id,
+			Description: item.Description,
+			Name:        item.Name,
+			Html:        item.Html,
+			Css:         item.Css,
+			IsDefault:   item.IsDefault,
+			IsActive:    item.IsActive,
+			CreatedAt:   item.CreatedAt,
+			UpdatedAt:   item.UpdatedAt,
+		}
+	}
+	return &result
 }

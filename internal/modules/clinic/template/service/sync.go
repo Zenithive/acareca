@@ -10,25 +10,25 @@ import (
 	"github.com/iamarpitzala/acareca/internal/shared/common"
 )
 
-type ISyncService interface {
+type ISync interface {
 	BulkSyncDefaults(ctx context.Context) error
 }
 
-type SyncService struct {
+type Sync struct {
 	templateRepo repository.ITemplateRepository
 	settingRepo  repository.ISettingRepository
 	encryption   IEncryptionService
 }
 
-func NewSyncService(templateRepo repository.ITemplateRepository, settingRepo repository.ISettingRepository, encryption IEncryptionService) ISyncService {
-	return &SyncService{
+func NewSyncService(templateRepo repository.ITemplateRepository, settingRepo repository.ISettingRepository, encryption IEncryptionService) ISync {
+	return &Sync{
 		templateRepo: templateRepo,
 		settingRepo:  settingRepo,
 		encryption:   encryption,
 	}
 }
 
-func (s *SyncService) BulkSyncDefaults(ctx context.Context) error {
+func (s *Sync) BulkSyncDefaults(ctx context.Context) error {
 	freshTemplates := template.DefaultTemplates()
 	existingList, err := s.templateRepo.List(ctx, "")
 	if err != nil {

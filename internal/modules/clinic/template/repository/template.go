@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/shared/common"
@@ -24,6 +25,8 @@ type ITemplateRepository interface {
 	List(ctx context.Context, method string) (*util.RsList, error)
 	BulkCreate(ctx context.Context, templates []common.Template) error
 	ValidateAccess(ctx context.Context, templateIds []uuid.UUID) error
+	GetClinicMailTemplate(ctx context.Context, clinicID uuid.UUID) (string, string, error)
+	SaveClinicMailTemplate(ctx context.Context, clinicID uuid.UUID, subject, body string) error
 }
 
 type TemplateRepository struct {
@@ -187,4 +190,36 @@ func (r *TemplateRepository) ValidateAccess(ctx context.Context, templateIds []u
 	}
 
 	return nil
+}
+
+// GetClinicMailTemplate implements [ITemplateRepository].
+func (r *TemplateRepository) GetClinicMailTemplate(ctx context.Context, clinicID uuid.UUID) (string, string, error) {
+	var subject, body string
+
+	err := r.db.QueryRowContext(ctx, `
+		SELECT mail_subject, mail_body 
+		FROM tbl_clinic_invoice_mail_templates 
+		WHERE clinic_id = $1
+	`, clinicID).Scan(&subject, &body)
+
+	if err != nil {
+		return "", "", err
+	}
+
+	return subject, body, nil
+}
+
+// SaveClinicMailTemplate saves or updates clinic mail template
+func (r *TemplateRepository) SaveClinicMailTemplate(ctx context.Context, clinicID uuid.UUID, subject, body string) error {
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO tbl_clinic_invoice_mail_templates (clinic_id, mail_subject, mail_body)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (clinic_id) 
+		DO UPDATE SET 
+			mail_subject = EXCLUDED.mail_subject,
+			mail_body = EXCLUDED.mail_body,
+			updated_at = NOW()
+	`, clinicID, subject, strings.TrimSpace(body))
+
+	return err
 }

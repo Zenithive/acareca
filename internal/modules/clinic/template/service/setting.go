@@ -11,25 +11,24 @@ import (
 )
 
 // ISettingService handles settings management
-type ISettingService interface {
+type ISetting interface {
 	Get(ctx context.Context, invoiceId uuid.UUID) (*common.RsSetting, error)
 	Update(ctx context.Context, rq template.RqUpdateSetting) (*common.RsSetting, error)
 	CreateDefaultForTemplate(ctx context.Context, templateId uuid.UUID) error
-	EnrichWithDocuments(ctx context.Context, st *common.Setting) error
+	// EnrichWithDocuments(ctx context.Context, st *common.Setting) error
 }
 
-type SettingService struct {
-	repo    repository.ISettingRepository
-	docRepo IDocumentRepository
+type Setting struct {
+	repo repository.ISettingRepository
 }
 
-func NewSettingService(repo repository.ISettingRepository) ISettingService {
-	return &SettingService{
+func NewSetting(repo repository.ISettingRepository) ISetting {
+	return &Setting{
 		repo: repo,
 	}
 }
 
-func (s *SettingService) Get(ctx context.Context, invoiceId uuid.UUID) (*common.RsSetting, error) {
+func (s *Setting) Get(ctx context.Context, invoiceId uuid.UUID) (*common.RsSetting, error) {
 	st, err := s.repo.Get(ctx, invoiceId)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch invoice settings: %w", err)
@@ -41,15 +40,15 @@ func (s *SettingService) Get(ctx context.Context, invoiceId uuid.UUID) (*common.
 		return &rs, nil
 	}
 
-	if err := s.EnrichWithDocuments(ctx, st); err != nil {
-		return nil, fmt.Errorf("failed enriching setting documents: %w", err)
-	}
+	// if err := s.EnrichWithDocuments(ctx, st); err != nil {
+	// 	return nil, fmt.Errorf("failed enriching setting documents: %w", err)
+	// }
 
 	rs := st.ToRs()
 	return &rs, nil
 }
 
-func (s *SettingService) Update(ctx context.Context, rq template.RqUpdateSetting) (*common.RsSetting, error) {
+func (s *Setting) Update(ctx context.Context, rq template.RqUpdateSetting) (*common.RsSetting, error) {
 	st := rq.ToDB()
 	if err := s.repo.Update(ctx, &st, *rq.InvoiceId); err != nil {
 		return nil, err
@@ -58,17 +57,17 @@ func (s *SettingService) Update(ctx context.Context, rq template.RqUpdateSetting
 	return &rs, nil
 }
 
-func (s *SettingService) CreateDefaultForTemplate(ctx context.Context, templateId uuid.UUID) error {
+func (s *Setting) CreateDefaultForTemplate(ctx context.Context, templateId uuid.UUID) error {
 	st := template.DefaultSettings(templateId)
 	return s.repo.Create(ctx, &st)
 }
 
-func (s *SettingService) EnrichWithDocuments(ctx context.Context, st *common.Setting) error {
-	if st.LogoId != nil {
-		doc, err := s.docRepo.GetByID(ctx, *st.LogoId)
-		if err == nil && doc != nil {
-			st.Logo = doc
-		}
-	}
-	return nil
-}
+// func (s *Setting) EnrichWithDocuments(ctx context.Context, st *common.Setting) error {
+// 	if st.LogoId != nil {
+// 		doc, err := s.docRepo.GetDocumentByID(ctx, *st.LogoId)
+// 		if err == nil && doc != nil {
+// 			st.Logo = doc
+// 		}
+// 	}
+// 	return nil
+// }
