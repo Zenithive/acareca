@@ -31,6 +31,8 @@ type RqEntry struct {
 	Expression       interface{} `json:"expression"`
 	InvoiceSectionID *uuid.UUID  `json:"invoiceSectionId,omitempty"`
 	IsFinal          bool        `json:"isFinal"`
+	Children         []*RqEntry  `json:"children,omitempty" validate:"omitempty,dive"`
+	ParentID         *uuid.UUID  `json:"parentId,omitempty"`
 }
 
 func (r *RqEntry) ToItem() *Item {
@@ -44,8 +46,16 @@ func (r *RqEntry) ToItem() *Item {
 		amount = *r.Amount
 	}
 
+	itemID := uuid.New()
+	children := make([]*Item, 0, len(r.Children))
+	for _, child := range r.Children {
+		childItem := child.ToItem()
+		childItem.ParentID = &itemID
+		children = append(children, childItem)
+	}
+
 	return &Item{
-		ID:               uuid.New(),
+		ID:               itemID,
 		Name:             r.Name,
 		Description:      r.Description,
 		EntryType:        r.EntryType,
@@ -56,21 +66,25 @@ func (r *RqEntry) ToItem() *Item {
 		Expression:       r.Expression,
 		InvoiceSectionID: invoiceSectionID,
 		IsFinal:          r.IsFinal,
+		Children:         children,
+		ParentID:         r.ParentID,
 	}
 }
 
 type RqUpdateEntry struct {
-	ID               *uuid.UUID  `json:"id,omitempty"`
-	Name             *string     `json:"name,omitempty"`
-	Description      *string     `json:"description,omitempty"`
-	EntryType        *EntryType  `json:"entryType,omitempty"`
-	BASCode          *BasCode    `json:"basCode,omitempty"`
-	FieldKey         *string     `json:"fieldKey,omitempty"`
-	Amount           *float64    `json:"amount,omitempty"`
-	SortOrder        *int        `json:"sortOrder,omitempty"`
-	Expression       interface{} `json:"expression,omitempty"`
-	InvoiceSectionID *uuid.UUID  `json:"invoiceSectionId,omitempty"`
-	IsFinal          *bool       `json:"isFinal,omitempty"`
+	ID               *uuid.UUID        `json:"id,omitempty"`
+	Name             *string           `json:"name,omitempty"`
+	Description      *string           `json:"description,omitempty"`
+	EntryType        *EntryType        `json:"entryType,omitempty"`
+	BASCode          *BasCode          `json:"basCode,omitempty"`
+	FieldKey         *string           `json:"fieldKey,omitempty"`
+	Amount           *float64          `json:"amount,omitempty"`
+	SortOrder        *int              `json:"sortOrder,omitempty"`
+	Expression       interface{}       `json:"expression,omitempty"`
+	InvoiceSectionID *uuid.UUID        `json:"invoiceSectionId,omitempty"`
+	IsFinal          *bool             `json:"isFinal,omitempty"`
+	Children         []*RqUpdateEntry  `json:"children,omitempty" validate:"omitempty,dive"`
+	ParentID         *uuid.UUID        `json:"parentId,omitempty"`
 }
 
 func (r *RqUpdateEntry) ApplyToItem(item *Item) *Item {
@@ -109,6 +123,26 @@ func (r *RqUpdateEntry) ApplyToItem(item *Item) *Item {
 	if r.FieldKey != nil {
 		item.FieldKey = r.FieldKey
 	}
+	if r.ParentID != nil {
+		item.ParentID = r.ParentID
+	}
+
+	if r.Children != nil {
+		children := make([]*Item, 0, len(r.Children))
+		for _, childUpdate := range r.Children {
+			childItem := &Item{}
+			if childUpdate.ID != nil {
+				childItem.ID = *childUpdate.ID
+			} else {
+				childItem.ID = uuid.New()
+			}
+			childItem.ParentID = &item.ID
+			childUpdate.ApplyToItem(childItem)
+			children = append(children, childItem)
+		}
+		item.Children = children
+	}
+
 	return item
 }
 
@@ -125,12 +159,19 @@ type Item struct {
 	Expression       interface{} `db:"-"`
 	InvoiceSectionID *uuid.UUID  `db:"invoice_section_id,omitempty"`
 	IsFinal          bool        `db:"is_final"`
+	Children         []*Item     `db:"-"`
+	ParentID         *uuid.UUID  `db:"parent_id,omitempty"`
 }
 
 func (i *Item) ToRsEntry() *RsEntry {
 	var invoiceSectionID *uuid.UUID
 	if i.InvoiceSectionID != nil {
 		invoiceSectionID = i.InvoiceSectionID
+	}
+
+	children := make([]*RsEntry, 0, len(i.Children))
+	for _, child := range i.Children {
+		children = append(children, child.ToRsEntry())
 	}
 
 	return &RsEntry{
@@ -145,6 +186,8 @@ func (i *Item) ToRsEntry() *RsEntry {
 		Expression:       i.Expression,
 		InvoiceSectionID: invoiceSectionID,
 		IsFinal:          i.IsFinal,
+		Children:         children,
+		ParentID:         i.ParentID,
 	}
 }
 
@@ -160,4 +203,6 @@ type RsEntry struct {
 	Expression       interface{} `json:"expression"`
 	InvoiceSectionID *uuid.UUID  `json:"invoiceSectionId,omitempty"`
 	IsFinal          bool        `json:"isFinal"`
+	Children         []*RsEntry  `json:"children,omitempty"`
+	ParentID         *uuid.UUID  `json:"parentId,omitempty"`
 }
