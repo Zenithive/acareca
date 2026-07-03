@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/iamarpitzala/acareca/internal/modules/file"
+	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
 )
@@ -46,7 +46,7 @@ type Repository interface {
 	SaveResetToken(ctx context.Context, userID string, tokenHash string, expiresAt time.Time) error
 	CompletePasswordReset(ctx context.Context, tokenHash string, newPasswordHash string) error
 
-	GetDocumentByUserID(ctx context.Context, tx *sqlx.Tx, userID uuid.UUID) (*file.Document, error)
+	GetDocumentByUserID(ctx context.Context, tx *sqlx.Tx, userID uuid.UUID) (*common.Document, error)
 }
 
 type repository struct {
@@ -465,7 +465,7 @@ func (r *repository) CompletePasswordReset(ctx context.Context, tokenHash string
 	return nil
 }
 
-func (r *repository) GetDocumentByUserID(ctx context.Context, tx *sqlx.Tx, userID uuid.UUID) (*file.Document, error) {
+func (r *repository) GetDocumentByUserID(ctx context.Context, tx *sqlx.Tx, userID uuid.UUID) (*common.Document, error) {
 	query := `
 		SELECT
 			d.id, d.owner_id, d.owner_role, d.object_key, d.bucket,
@@ -477,7 +477,7 @@ func (r *repository) GetDocumentByUserID(ctx context.Context, tx *sqlx.Tx, userI
 		WHERE c.id = $1 AND c.deleted_at IS NULL AND d.deleted_at IS NULL
 		LIMIT 1`
 
-	var doc file.Document
+	var doc common.Document
 	if err := tx.GetContext(ctx, &doc, query, userID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil

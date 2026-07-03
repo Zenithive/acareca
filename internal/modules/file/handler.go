@@ -111,7 +111,7 @@ func (h *handler) ListDocument(c *gin.Context) {
 	}
 
 	// Parse query parameters
-	var filters RqListDocuments
+	var filters RqListDocument
 	if err := c.ShouldBindQuery(&filters); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return

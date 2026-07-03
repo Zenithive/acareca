@@ -6,42 +6,29 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/template"
+	"github.com/iamarpitzala/acareca/internal/modules/clinic/template/repository"
+	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
 
-// ITemplateRepository defines template data access interface
-type ITemplateRepository interface {
-	Create(ctx context.Context, t *template.Template) error
-	Update(ctx context.Context, t *template.Template) error
-	Delete(ctx context.Context, id uuid.UUID) error
-	Get(ctx context.Context, id uuid.UUID) (*template.Template, error)
-	List(ctx context.Context, method string) (*util.RsList, error)
-	BulkCreate(ctx context.Context, templates []template.Template) error
-	ValidateAccess(ctx context.Context, templateIds []uuid.UUID) error
-}
-
 // ITemplateService handles template CRUD operations
 type ITemplateService interface {
-	Create(ctx context.Context, rq template.RqGlobalTemplate) (*template.RsTemplate, error)
-	Update(ctx context.Context, id uuid.UUID, rq template.RqGlobalTemplate) (*template.RsTemplate, error)
+	Create(ctx context.Context, rq template.RqGlobalTemplate) (*common.RsTemplate, error)
+	Update(ctx context.Context, id uuid.UUID, rq template.RqGlobalTemplate) (*common.RsTemplate, error)
 	Delete(ctx context.Context, id uuid.UUID) error
-	Get(ctx context.Context, id uuid.UUID) (*template.RsTemplate, error)
+	Get(ctx context.Context, id uuid.UUID) (*common.RsTemplate, error)
 	List(ctx context.Context, method string) (*util.RsList, error)
-	BulkCreate(ctx context.Context) (*[]template.RsTemplate, error)
+	BulkCreate(ctx context.Context) (*[]common.RsTemplate, error)
 	ValidateAccess(ctx context.Context, templateIds []uuid.UUID) error
 }
 
 type TemplateService struct {
-	repo       ITemplateRepository
+	repo       repository.ITemplateRepository
 	encryption IEncryptionService
 	settingSvc ISettingService
 }
 
-func NewTemplateService(
-	repo ITemplateRepository,
-	encryption IEncryptionService,
-	settingSvc ISettingService,
-) ITemplateService {
+func NewTemplateService(repo repository.ITemplateRepository, encryption IEncryptionService, settingSvc ISettingService) ITemplateService {
 	return &TemplateService{
 		repo:       repo,
 		encryption: encryption,
@@ -49,7 +36,7 @@ func NewTemplateService(
 	}
 }
 
-func (s *TemplateService) Create(ctx context.Context, rq template.RqGlobalTemplate) (*template.RsTemplate, error) {
+func (s *TemplateService) Create(ctx context.Context, rq template.RqGlobalTemplate) (*common.RsTemplate, error) {
 	// Encrypt content
 	htmlBlob, cssBlob, err := s.encryption.EncryptTemplate(rq.Html, rq.Css)
 	if err != nil {
@@ -57,7 +44,7 @@ func (s *TemplateService) Create(ctx context.Context, rq template.RqGlobalTempla
 	}
 
 	// Build domain entity
-	t := template.Template{
+	t := common.Template{
 		Name:        rq.Name,
 		Description: nil,
 		Html:        htmlBlob,
@@ -84,14 +71,14 @@ func (s *TemplateService) Create(ctx context.Context, rq template.RqGlobalTempla
 	return &rs, nil
 }
 
-func (s *TemplateService) Update(ctx context.Context, id uuid.UUID, rq template.RqGlobalTemplate) (*template.RsTemplate, error) {
+func (s *TemplateService) Update(ctx context.Context, id uuid.UUID, rq template.RqGlobalTemplate) (*common.RsTemplate, error) {
 	// Encrypt content
 	htmlBlob, cssBlob, err := s.encryption.EncryptTemplate(rq.Html, rq.Css)
 	if err != nil {
 		return nil, err
 	}
 
-	t := template.Template{
+	t := common.Template{
 		Id:        id,
 		Name:      rq.Name,
 		Html:      htmlBlob,
@@ -117,7 +104,7 @@ func (s *TemplateService) Update(ctx context.Context, id uuid.UUID, rq template.
 	return &rs, nil
 }
 
-func (s *TemplateService) Get(ctx context.Context, id uuid.UUID) (*template.RsTemplate, error) {
+func (s *TemplateService) Get(ctx context.Context, id uuid.UUID) (*common.RsTemplate, error) {
 	t, err := s.repo.Get(ctx, id)
 	if err != nil {
 		return nil, err
@@ -144,9 +131,9 @@ func (s *TemplateService) List(ctx context.Context, method string) (*util.RsList
 	return s.repo.List(ctx, method)
 }
 
-func (s *TemplateService) BulkCreate(ctx context.Context) (*[]template.RsTemplate, error) {
+func (s *TemplateService) BulkCreate(ctx context.Context) (*[]common.RsTemplate, error) {
 	rqs := template.DefaultTemplates()
-	templates := make([]template.Template, 0, len(rqs))
+	templates := make([]common.Template, 0, len(rqs))
 
 	for _, rq := range rqs {
 		htmlBlob, cssBlob, err := s.encryption.EncryptTemplate(
@@ -157,7 +144,7 @@ func (s *TemplateService) BulkCreate(ctx context.Context) (*[]template.RsTemplat
 			return nil, err
 		}
 
-		templates = append(templates, template.Template{
+		templates = append(templates, common.Template{
 			Name:      rq.Name,
 			Html:      htmlBlob,
 			Css:       cssBlob,
@@ -177,7 +164,7 @@ func (s *TemplateService) BulkCreate(ctx context.Context) (*[]template.RsTemplat
 		}
 	}
 
-	rs := make([]template.RsTemplate, 0, len(templates))
+	rs := make([]common.RsTemplate, 0, len(templates))
 	for _, t := range templates {
 		rsItem := t.ToRs()
 		rsItem.Html = base64.StdEncoding.EncodeToString(t.Html)

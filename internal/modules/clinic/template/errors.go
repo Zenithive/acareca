@@ -33,3 +33,8 @@ var (
 	ErrTemplateTooLarge  = errors.New("individual template exceeds size limit")
 	ErrTotalSizeTooLarge = errors.New("total template size exceeds limit")
 )
+
+// Implementation errors
+var (
+	ErrNotImplemented = errors.New("not implemented - use new architecture")
+)

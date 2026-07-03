@@ -6,33 +6,26 @@ import (
 	"strings"
 
 	"github.com/aymerick/raymond"
-	"github.com/iamarpitzala/acareca/internal/modules/clinic/template/domain"
 )
 
-// TemplateBuilder builds final HTML document with size limits
 type TemplateBuilder struct {
 	sizeGuard *SizeGuard
 }
 
-// NewTemplateBuilder creates a new template builder with default size limits
 func NewTemplateBuilder() *TemplateBuilder {
 	return &TemplateBuilder{
-		sizeGuard: NewSizeGuard(domain.MaxTotalSizeBytes),
+		// sizeGuard: NewSizeGuard(template.MaxTotalSizeBytes),
+		sizeGuard: NewSizeGuard(1024 * 1024), // 1 MB limit for the entire document
 	}
 }
 
-// NewTemplateBuilderWithLimit creates a builder with custom size limit
 func NewTemplateBuilderWithLimit(maxSize int) *TemplateBuilder {
 	return &TemplateBuilder{
 		sizeGuard: NewSizeGuard(maxSize),
 	}
 }
 
-// BuildDocument creates final HTML document from templates
-func (b *TemplateBuilder) BuildDocument(
-	templates []TemplateContent,
-	data map[string]interface{},
-) (string, error) {
+func (b *TemplateBuilder) BuildDocument(templates []TemplateContent, data map[string]interface{}) (string, error) {
 	if len(templates) == 0 {
 		return "", fmt.Errorf("no templates provided")
 	}
@@ -85,9 +78,7 @@ func (b *TemplateBuilder) BuildDocument(
 	return document, nil
 }
 
-// BuildSimpleDocument creates HTML from single template without rendering
 func (b *TemplateBuilder) BuildSimpleDocument(html, css string) (string, error) {
-	// Check size
 	size := len(html) + len(css)
 	if err := b.sizeGuard.CheckAndAdd(size); err != nil {
 		return "", fmt.Errorf("document size limit exceeded: %w", err)
@@ -109,12 +100,10 @@ func (b *TemplateBuilder) BuildSimpleDocument(html, css string) (string, error) 
 	return document, nil
 }
 
-// Reset resets the size guard for reuse
 func (b *TemplateBuilder) Reset() {
 	b.sizeGuard.Reset()
 }
 
-// CurrentSize returns the current accumulated size
 func (b *TemplateBuilder) CurrentSize() int {
 	return b.sizeGuard.CurrentSize()
 }

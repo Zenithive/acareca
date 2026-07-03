@@ -4,27 +4,28 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/iamarpitzala/acareca/internal/modules/clinic/template/repository"
 	"github.com/iamarpitzala/acareca/pkg/config"
 	"github.com/jmoiron/sqlx"
 )
 
-// Container manages all dependencies for the template module
 type Container struct {
 	cfg *config.Config
 	db  *sqlx.DB
 
-	// Lazy-loaded handler
+	templateRepo repository.ITemplateRepository
+	settingRepo  repository.ISettingRepository
+	reposOnce    sync.Once
+
 	handler IHandler
 	hOnce   sync.Once
 
-	// Lazy-loaded legacy service (for backward compatibility)
-	legacySvc  IService
-	legacyOnce sync.Once
+	serviceFactory ServiceFactory
 }
 
-// NewContainer creates a new dependency injection container
+type ServiceFactory func(cfg *config.Config, templateRepo repository.ITemplateRepository, settingRepo repository.ISettingRepository) IService
+
 func NewContainer(cfg *config.Config, db *sqlx.DB) (*Container, error) {
-	// Validate encryption key immediately
 	if len(cfg.TemplateEncryptionKey) != 32 {
 		return nil, fmt.Errorf("template encryption key must be exactly 32 characters, got %d", len(cfg.TemplateEncryptionKey))
 	}
@@ -35,34 +36,39 @@ func NewContainer(cfg *config.Config, db *sqlx.DB) (*Container, error) {
 	}, nil
 }
 
-// Handler - lazy initialization
+func (c *Container) SetServiceFactory(factory ServiceFactory) {
+	c.serviceFactory = factory
+}
+
+func (c *Container) initRepositories() {
+	c.reposOnce.Do(func() {
+		c.templateRepo = repository.NewTemplateRepository(c.db)
+		c.settingRepo = repository.NewSettingRepository(c.db)
+	})
+}
+
+func (c *Container) Service() IService {
+	c.initRepositories()
+
+	if c.serviceFactory == nil {
+		panic("service factory not set - call SetServiceFactory first")
+	}
+
+	return c.serviceFactory(c.cfg, c.templateRepo, c.settingRepo)
+}
+
+func (c *Container) SettingRepo() repository.ISettingRepository {
+	c.initRepositories()
+	return c.settingRepo
+}
+
 func (c *Container) Handler() IHandler {
 	c.hOnce.Do(func() {
-		// Use legacy service for now to maintain backward compatibility
-		c.handler = NewHandler(c.LegacyService())
+		c.handler = NewHandler(c.Service())
 	})
 	return c.handler
 }
 
-// LegacyService provides the old monolithic service interface for backward compatibility
-// This allows existing code to continue working while we migrate to the new structure
-func (c *Container) LegacyService() IService {
-	c.legacyOnce.Do(func() {
-		// Create the old repository interface using the existing repository
-		legacyRepo := NewRepository(c.db)
-		
-		// Create the legacy service
-		c.legacySvc = NewService(legacyRepo, c.cfg)
-	})
-	return c.legacySvc
-}
-
-// Configuration provides access to the config
 func (c *Container) Config() *config.Config {
 	return c.cfg
-}
-
-// DB provides access to the database connection
-func (c *Container) DB() *sqlx.DB {
-	return c.db
 }

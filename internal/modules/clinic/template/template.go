@@ -3,6 +3,7 @@ package template
 import (
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/template/defaults"
+	"github.com/iamarpitzala/acareca/internal/shared/common"
 )
 
 // DefaultTemplates returns the full set of default global invoice document templates.
@@ -34,13 +35,13 @@ func DefaultTemplates() []RqGlobalTemplate {
 	}
 }
 
-func DefaultSettings(templateId uuid.UUID) Setting {
+func DefaultSettings(templateId uuid.UUID) common.Setting {
 	termText := "This invoice is settled by offset against patient fees collected on your behalf. No payment is required—refer to the attached Remittance Advice for the net amount payable to you."
 	paymentTerms := termText
 	waterMarkText := "PAID"
 	tableStyle := "simple"
 
-	return Setting{
+	return common.Setting{
 		InvoiceId:        nil,
 		PrimaryColor:     "#1f4e5f",
 		AccentColor:      "#5f96b4",

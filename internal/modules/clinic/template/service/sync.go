@@ -6,24 +6,21 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/template"
+	"github.com/iamarpitzala/acareca/internal/modules/clinic/template/repository"
+	"github.com/iamarpitzala/acareca/internal/shared/common"
 )
 
-// ISyncService handles default template synchronization
 type ISyncService interface {
 	BulkSyncDefaults(ctx context.Context) error
 }
 
 type SyncService struct {
-	templateRepo ITemplateRepository
-	settingRepo  ISettingRepository
+	templateRepo repository.ITemplateRepository
+	settingRepo  repository.ISettingRepository
 	encryption   IEncryptionService
 }
 
-func NewSyncService(
-	templateRepo ITemplateRepository,
-	settingRepo ISettingRepository,
-	encryption IEncryptionService,
-) ISyncService {
+func NewSyncService(templateRepo repository.ITemplateRepository, settingRepo repository.ISettingRepository, encryption IEncryptionService) ISyncService {
 	return &SyncService{
 		templateRepo: templateRepo,
 		settingRepo:  settingRepo,
@@ -69,7 +66,7 @@ func (s *SyncService) BulkSyncDefaults(ctx context.Context) error {
 
 		if existingMatched, exists := existingMap[freshRq.Name]; exists {
 			// Update existing template
-			t := template.Template{
+			t := common.Template{
 				Id:        existingMatched.Id,
 				Name:      freshRq.Name,
 				Html:      htmlBlob,
@@ -82,7 +79,7 @@ func (s *SyncService) BulkSyncDefaults(ctx context.Context) error {
 			}
 		} else {
 			// Create new template
-			t := template.Template{
+			t := common.Template{
 				Name:      freshRq.Name,
 				Html:      htmlBlob,
 				Css:       cssBlob,

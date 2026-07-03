@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/iamarpitzala/acareca/internal/modules/file"
 	"github.com/iamarpitzala/acareca/internal/shared/common"
 )
 
@@ -18,7 +17,7 @@ type Clinic struct {
 	Name           string    `db:"name"`
 	ABN            *string   `db:"abn"`
 	Description    *string   `db:"description"`
-	Document       *file.Document
+	Document       *common.Document
 	IsActive       bool       `db:"is_active"`
 	CreatedAt      time.Time  `db:"created_at"`
 	UpdatedAt      time.Time  `db:"updated_at"`
@@ -147,7 +146,7 @@ type RsClinic struct {
 	Address           *RsClinicAddress     `json:"address,omitempty"`
 	Contacts          []RsClinicContact    `json:"contacts,omitempty"`
 	FinancialSettings *RsFinancialSettings `json:"financial_settings,omitempty"`
-	Document          *file.RsDocument     `json:"document"`
+	Document          *common.RsDocument   `json:"document"`
 	CreatedAt         time.Time            `json:"created_at"`
 	UpdatedAt         time.Time            `json:"updated_at"`
 }
@@ -208,11 +207,11 @@ type AccountantPermission struct {
 }
 
 // toRsDocument safely converts a *file.Document to *file.RsDocument, returning nil if doc is nil.
-func ToRsDocument(doc *file.Document) *file.RsDocument {
+func ToRsDocument(doc *common.Document) *common.RsDocument {
 	if doc == nil {
 		return nil
 	}
-	return &file.RsDocument{
+	return &common.RsDocument{
 		ID:           doc.ID,
 		OriginalName: doc.OriginalName,
 		FileKey:      doc.ObjectKey,

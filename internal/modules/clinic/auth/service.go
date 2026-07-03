@@ -12,8 +12,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/template"
-	"github.com/iamarpitzala/acareca/internal/modules/file"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
+	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/iamarpitzala/acareca/internal/shared/mail"
 	"github.com/iamarpitzala/acareca/internal/shared/middleware"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
@@ -83,7 +83,7 @@ func (s *service) Register(ctx context.Context, req *RqRegister) (*RsClinic, err
 	var tokenID uuid.UUID
 	var addresses []Address
 	var contacts []Contact
-	var document *file.Document
+	var document *common.Document
 
 	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		var txErr error
@@ -162,7 +162,7 @@ func (s *service) Register(ctx context.Context, req *RqRegister) (*RsClinic, err
 		EntityID:   &clinicIDStr,
 	})
 
-	var rsDocument *file.RsDocument
+	var rsDocument *common.RsDocument
 	if document != nil {
 		rsDocument = document.ToRsDocument()
 	}
@@ -265,7 +265,7 @@ func (s *service) GetProfile(ctx context.Context, clinicID uuid.UUID) (*RsClinic
 		return nil, err
 	}
 
-	var document *file.Document
+	var document *common.Document
 	if clinic.DocumentID != nil {
 		document, err = s.repo.GetDocumentByID(ctx, clinic.DocumentID)
 		if err != nil {
@@ -273,7 +273,7 @@ func (s *service) GetProfile(ctx context.Context, clinicID uuid.UUID) (*RsClinic
 		}
 	}
 
-	var rsDocument *file.RsDocument
+	var rsDocument *common.RsDocument
 	if document != nil {
 		rsDocument = document.ToRsDocument()
 	}
@@ -539,7 +539,7 @@ func (s *service) UpdateProfile(ctx context.Context, req *RqUpdate) (*RsClinic, 
 		return nil, err
 	}
 
-	var document *file.Document
+	var document *common.Document
 	if updatedClinic.DocumentID != nil {
 		document, err = s.repo.GetDocumentByID(ctx, updatedClinic.DocumentID)
 		if err != nil {
@@ -557,7 +557,7 @@ func (s *service) UpdateProfile(ctx context.Context, req *RqUpdate) (*RsClinic, 
 		EntityID:   &clinicIDStr,
 	})
 
-	var rsDocument *file.RsDocument
+	var rsDocument *common.RsDocument
 	if document != nil {
 		rsDocument = document.ToRsDocument()
 	}

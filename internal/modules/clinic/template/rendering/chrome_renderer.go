@@ -7,21 +7,17 @@ import (
 	"github.com/iamarpitzala/acareca/pkg/chromepdf"
 )
 
-// ChromeRenderer implements IPDFRenderer using headless Chrome
 type ChromeRenderer struct{}
 
-// NewChromeRenderer creates a new Chrome-based PDF renderer
 func NewChromeRenderer() *ChromeRenderer {
 	return &ChromeRenderer{}
 }
 
-// RenderToPDF converts HTML to PDF using Chrome
 func (r *ChromeRenderer) RenderToPDF(ctx context.Context, html string) ([]byte, error) {
 	if html == "" {
 		return nil, fmt.Errorf("html content is empty")
 	}
 
-	// Use existing chromepdf package
 	pdf, err := chromepdf.Generate(ctx, html)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate PDF: %w", err)

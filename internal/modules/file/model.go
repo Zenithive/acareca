@@ -7,37 +7,11 @@ import (
 	"github.com/iamarpitzala/acareca/internal/shared/common"
 )
 
-// Document represents a file in the system
-type Document struct {
-	ID        uuid.UUID `db:"id"`
-	OwnerID   uuid.UUID `db:"owner_id"`
-	OwnerRole string    `db:"owner_role"`
-	ObjectKey string    `db:"object_key"`
-	Bucket    string    `db:"bucket"`
-
-	OriginalName string  `db:"original_name"`
-	Extension    *string `db:"extension"`
-	MimeType     string  `db:"mime_type"`
-	SizeBytes    int64   `db:"size_bytes"`
-
-	Checksum *string `db:"checksum"`
-	Status   string  `db:"status"`
-	IsPublic bool    `db:"is_public"`
-
-	UploadedAt *time.Time `db:"uploaded_at"`
-
-	CreatedAt time.Time  `db:"created_at"`
-	UpdatedAt time.Time  `db:"updated_at"`
-	DeletedAt *time.Time `db:"deleted_at"`
-}
-
 // Document status constants
 const (
 	StatusUploaded = "uploaded"
 	StatusFailed   = "failed"
 )
-
-// Request models
 
 // RqUploadFile represents a file upload request
 type RqUploadFile struct {
@@ -52,7 +26,7 @@ type RqUpdateDocument struct {
 }
 
 // RqListDocuments represents a document list request
-type RqListDocuments struct {
+type RqListDocument struct {
 	Status *string `form:"status" json:"status" validate:"omitempty,oneof=uploaded failed"`
 	filter common.Filter
 }
@@ -66,19 +40,9 @@ type RqGeneratePresignedUploadURL struct {
 	ExpiresIn *int `form:"expires_in" validate:"omitempty,min=60,max=3600"`
 }
 
-// Response models
-// RsDocument represents a document response
-type RsDocument struct {
-	ID           uuid.UUID  `json:"id"`
-	OriginalName string     `json:"original_name"`
-	FileKey      string     `json:"file_key"`
-	UploadedAt   *time.Time `json:"uploaded_at,omitempty"`
-	CreatedAt    time.Time  `json:"created_at"`
-}
-
 // RsListDocuments represents a paginated list of documents
 type RsListDocuments struct {
-	Documents []RsDocument `json:"documents"`
+	Documents []common.RsDocument `json:"documents"`
 	// Pagination RsPaginationMeta `json:"pagination"`
 }
 
@@ -96,26 +60,4 @@ type RsPresignedUploadURL struct {
 	ExpiresAt   time.Time `json:"expires_at"`
 	DocumentID  uuid.UUID `json:"document_id"`
 	ContentType string    `json:"content_type"` // verified MIME type — client must send this as Content-Type on the PUT
-}
-
-// ToRsDocument converts Document to RsDocument
-func (d *Document) ToRsDocument() *RsDocument {
-	return &RsDocument{
-		ID:           d.ID,
-		OriginalName: d.OriginalName,
-		FileKey:      d.ObjectKey,
-		UploadedAt:   d.UploadedAt,
-		CreatedAt:    d.CreatedAt,
-	}
-}
-
-// ToRsUploadDocument converts Document to RsUploadDocument
-func (d *Document) ToRsUploadDocument(baseURL string) *RsDocument {
-	return &RsDocument{
-		ID:           d.ID,
-		OriginalName: d.OriginalName,
-		FileKey:      d.ObjectKey,
-		UploadedAt:   d.UploadedAt,
-		CreatedAt:    d.CreatedAt,
-	}
 }

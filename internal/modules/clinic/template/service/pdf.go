@@ -7,22 +7,22 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/template"
-	"github.com/iamarpitzala/acareca/internal/modules/clinic/template/domain"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/template/rendering"
+	"github.com/iamarpitzala/acareca/internal/modules/clinic/template/repository"
+	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/iamarpitzala/acareca/pkg/chromepdf"
 	"github.com/iamarpitzala/acareca/pkg/config"
 )
 
-// IPDFService handles PDF generation orchestration
 type IPDFService interface {
 	GeneratePDF(ctx context.Context, rq template.RqGeneratePDF) ([]byte, error)
-	GenerateMultiPDF(ctx context.Context, templateIds []uuid.UUID, data template.InvoiceData) ([]byte, error)
+	GenerateMultiPDF(ctx context.Context, templateIds []uuid.UUID, data common.Invoice) ([]byte, error)
 	DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateIds []uuid.UUID, invoiceId uuid.UUID) ([]byte, string, error)
 }
 
 type PDFService struct {
-	templateRepo ITemplateRepository
-	settingRepo  ISettingRepository
+	templateRepo repository.ITemplateRepository
+	settingRepo  repository.ISettingRepository
 	encryption   IEncryptionService
 	renderer     rendering.IPDFRenderer
 	builder      *rendering.TemplateBuilder
@@ -31,8 +31,8 @@ type PDFService struct {
 }
 
 func NewPDFService(
-	templateRepo ITemplateRepository,
-	settingRepo ISettingRepository,
+	templateRepo repository.ITemplateRepository,
+	settingRepo repository.ISettingRepository,
 	encryption IEncryptionService,
 	renderer rendering.IPDFRenderer,
 	builder *rendering.TemplateBuilder,
@@ -50,56 +50,47 @@ func NewPDFService(
 }
 
 func (s *PDFService) GeneratePDF(ctx context.Context, rq template.RqGeneratePDF) ([]byte, error) {
-	// Get template
 	t, err := s.templateRepo.Get(ctx, rq.TemplateId)
 	if err != nil {
 		return nil, err
 	}
 
-	// Decrypt template
 	html, css, err := s.encryption.DecryptTemplate(t.Html, t.Css)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decrypt template: %w", err)
 	}
 
-	// Get settings
 	st, err := s.settingRepo.Get(ctx, uuid.Nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get settings: %w", err)
 	}
 
-	// Apply settings to data
 	if st != nil {
 		s.applySettings(&rq.Data, st)
 	}
 
-	// Convert data to map
 	dataMap, err := s.dataMapper.ToMap(rq.Data)
 	if err != nil {
 		return nil, fmt.Errorf("failed to map data: %w", err)
 	}
 
-	// Render HTML with data
 	fullHTML, err := chromepdf.Render(html, css, dataMap)
 	if err != nil {
 		return nil, fmt.Errorf("failed to render HTML: %w", err)
 	}
 
-	// Generate PDF
 	return s.renderer.RenderToPDF(ctx, fullHTML)
 }
 
-func (s *PDFService) GenerateMultiPDF(ctx context.Context, templateIds []uuid.UUID, data template.InvoiceData) ([]byte, error) {
+func (s *PDFService) GenerateMultiPDF(ctx context.Context, templateIds []uuid.UUID, data common.Invoice) ([]byte, error) {
 	if len(templateIds) == 0 {
 		return nil, template.ErrTemplateRequired
 	}
 
-	// Validate access
 	if err := s.templateRepo.ValidateAccess(ctx, templateIds); err != nil {
 		return nil, err
 	}
 
-	// Load and decrypt templates
 	var htmlBuilder, cssBuilder strings.Builder
 	s.builder.Reset()
 
@@ -146,10 +137,13 @@ func (s *PDFService) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templa
 		return nil, "", template.ErrTemplateRequired
 	}
 
-	if len(templateIds) > domain.MaxTemplateCount {
+	// if len(templateIds) > template.MaxTemplateCount {
+	// 	return nil, "", template.ErrTooManyTemplates
+	// }
+
+	if len(templateIds) > 0 {
 		return nil, "", template.ErrTooManyTemplates
 	}
-
 	// Validate access
 	if err := s.templateRepo.ValidateAccess(ctx, templateIds); err != nil {
 		return nil, "", err
@@ -160,7 +154,7 @@ func (s *PDFService) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templa
 	// The full implementation would be similar to the old DownloadPDF method
 
 	filename := fmt.Sprintf("INVOICE_%s", invoiceId.String()[:8])
-	
+
 	// Placeholder: In full implementation, this would:
 	// 1. Load invoice from repository
 	// 2. Load sections
@@ -173,7 +167,7 @@ func (s *PDFService) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templa
 	return nil, filename, fmt.Errorf("full implementation pending")
 }
 
-func (s *PDFService) applySettings(data *template.InvoiceData, st *template.Setting) {
+func (s *PDFService) applySettings(data *common.Invoice, st *common.Setting) {
 	if st == nil {
 		return
 	}
