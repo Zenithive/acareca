@@ -15256,11 +15256,15 @@ const docTemplate = `{
             "type": "string",
             "enum": [
                 "DEBIT",
-                "CREDIT"
+                "CREDIT",
+                "Dentist",
+                "Clinic"
             ],
             "x-enum-varnames": [
                 "DEBIT",
-                "CREDIT"
+                "CREDIT",
+                "Dentist",
+                "Clinic"
             ]
         },
         "item.RqEntry": {
@@ -15299,6 +15303,9 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "name": {
+                    "type": "string"
+                },
+                "paidBy": {
                     "type": "string"
                 },
                 "parentId": {
@@ -15346,6 +15353,9 @@ const docTemplate = `{
                 "name": {
                     "type": "string"
                 },
+                "paidBy": {
+                    "type": "string"
+                },
                 "parentId": {
                     "type": "string"
                 },
@@ -15389,6 +15399,9 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "name": {
+                    "type": "string"
+                },
+                "paidBy": {
                     "type": "string"
                 },
                 "parentId": {

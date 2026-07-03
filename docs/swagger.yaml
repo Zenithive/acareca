@@ -2738,10 +2738,14 @@ definitions:
     enum:
     - DEBIT
     - CREDIT
+    - Dentist
+    - Clinic
     type: string
     x-enum-varnames:
     - DEBIT
     - CREDIT
+    - Dentist
+    - Clinic
   item.RqEntry:
     properties:
       amount:
@@ -2764,6 +2768,8 @@ definitions:
       isFinal:
         type: boolean
       name:
+        type: string
+      paidBy:
         type: string
       parentId:
         type: string
@@ -2798,6 +2804,8 @@ definitions:
         type: boolean
       name:
         type: string
+      paidBy:
+        type: string
       parentId:
         type: string
       sortOrder:
@@ -2827,6 +2835,8 @@ definitions:
       isFinal:
         type: boolean
       name:
+        type: string
+      paidBy:
         type: string
       parentId:
         type: string

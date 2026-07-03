@@ -15248,11 +15248,15 @@
             "type": "string",
             "enum": [
                 "DEBIT",
-                "CREDIT"
+                "CREDIT",
+                "Dentist",
+                "Clinic"
             ],
             "x-enum-varnames": [
                 "DEBIT",
-                "CREDIT"
+                "CREDIT",
+                "Dentist",
+                "Clinic"
             ]
         },
         "item.RqEntry": {
@@ -15291,6 +15295,9 @@
                     "type": "boolean"
                 },
                 "name": {
+                    "type": "string"
+                },
+                "paidBy": {
                     "type": "string"
                 },
                 "parentId": {
@@ -15338,6 +15345,9 @@
                 "name": {
                     "type": "string"
                 },
+                "paidBy": {
+                    "type": "string"
+                },
                 "parentId": {
                     "type": "string"
                 },
@@ -15381,6 +15391,9 @@
                     "type": "boolean"
                 },
                 "name": {
+                    "type": "string"
+                },
+                "paidBy": {
                     "type": "string"
                 },
                 "parentId": {
