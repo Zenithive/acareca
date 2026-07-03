@@ -123,6 +123,18 @@ type RsToken struct {
 	AccessToken  string  `json:"access_token"`
 	RefreshToken string  `json:"refresh_token"`
 	Role         *string `json:"role"`
+	IsNewUser    bool    `json:"is_new_user"` // true for first-time Google OAuth — frontend should show onboarding form
+}
+
+// RqGoogleOnboarding is sent after Google OAuth for new users to complete their business profile.
+// Call PUT /auth/user/profile after Google login when is_new_user=true
+type RqGoogleOnboarding struct {
+	EntityType string  `json:"entity_type" validate:"required,oneof=SOLE_TRADER COMPANY TRUST"`
+	EntityName *string `json:"entity_name" validate:"required"`
+	ABN        *string `json:"abn"         validate:"required"`
+	ACN        *string `json:"acn"         validate:"omitempty"`
+	Address    *string `json:"address"     validate:"omitempty"`
+	Profession *string `json:"profession"  validate:"omitempty"`
 }
 
 type RsUser struct {

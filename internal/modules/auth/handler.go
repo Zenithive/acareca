@@ -259,8 +259,10 @@ func (h *handler) GoogleCallback(c *gin.Context) {
 
 	frontendURL := h.cfg.FrontendURL
 
-	redirectURL := fmt.Sprintf("%s/auth/callback?access_token=%s&refresh_token=%s",
-		frontendURL, token.AccessToken, token.RefreshToken)
+	// Pass is_new_user flag so frontend knows to show the onboarding form
+	// for new Google users who still need to fill in ABN, EntityType, etc.
+	redirectURL := fmt.Sprintf("%s/auth/callback?access_token=%s&refresh_token=%s&is_new_user=%t",
+		frontendURL, token.AccessToken, token.RefreshToken, token.IsNewUser)
 
 	c.Redirect(http.StatusFound, redirectURL)
 }

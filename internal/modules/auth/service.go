@@ -410,13 +410,15 @@ func (s *service) GoogleCallback(ctx context.Context, code string) (*RsToken, er
 		return nil, err
 	}
 
-	user, findErr := s.repo.FindByEmail(ctx, googleUser.Email)
+	existingUser, findErr := s.repo.FindByEmail(ctx, googleUser.Email)
 	isNewUser := false
-
-	var authProvider *AuthProvider
+	var entityID string
 
 	if err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		var user *User
+
 		if findErr != nil {
+			// Brand new user — create tbl_user
 			if !errors.Is(findErr, ErrNotFound) {
 				return findErr
 			}
@@ -427,11 +429,67 @@ func (s *service) GoogleCallback(ctx context.Context, code string) (*RsToken, er
 				Role:      util.RolePractitioner,
 			}, tx)
 			if err != nil {
-				return err
+				return fmt.Errorf("create user: %w", err)
 			}
 			isNewUser = true
+
+			// Create practitioner profile (blank business fields — user fills in onboarding)
+			p, err := s.practitionerRepo.CreatePractitioner(ctx, &practitioner.RqCreatePractitioner{
+				UserID:     user.ID.String(),
+				EntityType: "SOLE_TRADER", // default, user updates via PUT /auth/user/profile
+			}, tx)
+			if err != nil {
+				return fmt.Errorf("create practitioner: %w", err)
+			}
+			entityID = p.ID.String()
+
+			// Create trial subscription
+			trial, err := s.adminSubscriptionSvc.FindByName(ctx, "Trial")
+			if err != nil {
+				return fmt.Errorf("find trial subscription: %w", err)
+			}
+			start := time.Now()
+			end := start.AddDate(0, 0, trial.DurationDays)
+			_, err = s.userSubscriptionSvc.Create(ctx, p.ID, &userSubscription.RqCreatePractitionerSubscription{
+				SubscriptionID: trial.ID,
+				StartDate:      start.Format(time.RFC3339),
+				EndDate:        end.Format(time.RFC3339),
+				Status:         userSubscription.StatusActive,
+			}, tx)
+			if err != nil {
+				return fmt.Errorf("create trial subscription: %w", err)
+			}
+
+			// Seed default chart of accounts
+			if err = coa.SeedDefaultsForPractitioner(ctx, s.coaRepo, p.ID, tx); err != nil {
+				return fmt.Errorf("seed default COA: %w", err)
+			}
+			if _, err = tx.ExecContext(ctx,
+				`UPDATE tbl_practitioner
+	 SET verified = true,
+	     updated_at = NOW()
+	 WHERE id = $1`,
+				p.ID,
+			); err != nil {
+				return fmt.Errorf("mark practitioner verified: %w", err)
+			}
+
+			// Set default notification preferences
+			if err := s.PreferenceSvc.PreferenceSetting(ctx, tx, user.ID, p.ID, util.RolePractitioner); err != nil {
+				return fmt.Errorf("set notification preferences: %w", err)
+			}
+			existingUser = user
+		} else {
+			// Existing user — resolve their practitioner entityID
+			user = existingUser
+			p, err := s.practitionerSvc.GetPractitionerByUserID(ctx, user.ID.String())
+			if err != nil {
+				return fmt.Errorf("get practitioner: %w", err)
+			}
+			entityID = p.ID.String()
 		}
 
+		// Upsert Google OAuth tokens
 		expiresAt := oauthToken.Expiry
 		accessTokenStr := oauthToken.AccessToken
 		refreshTokenStr := oauthToken.RefreshToken
@@ -445,41 +503,36 @@ func (s *service) GoogleCallback(ctx context.Context, code string) (*RsToken, er
 		if refreshTokenStr != "" {
 			ap.RefreshToken = &refreshTokenStr
 		}
-
-		if authProvider, err = s.repo.UpsertAuthProvider(ctx, ap, tx); err != nil {
-			return err
+		if _, err = s.repo.UpsertAuthProvider(ctx, ap, tx); err != nil {
+			return fmt.Errorf("upsert auth provider: %w", err)
 		}
 
-		// if isNewUser {
-		// 	if _, err = s.practitionerSvc.CreatePractitioner(ctx, &practitioner.RqCreatePractitioner{UserID: user.ID.String()}, tx); err != nil {
-		// 		return err
-		// 	}
-		// }
 		return nil
 	}); err != nil {
 		return nil, fmt.Errorf("google oauth transaction: %w", err)
 	}
 
-	userIDStr := user.ID.String()
+	userIDStr := existingUser.ID.String()
 	action := auditctx.ActionUserLoggedIn
 	if isNewUser {
 		action = auditctx.ActionUserRegistered
 	}
 	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
+		PracticeID: &entityID,
 		UserID:     &userIDStr,
 		Action:     action,
 		Module:     auditctx.ModuleAuth,
 		EntityType: lo.ToPtr(auditctx.EntityUser),
 		EntityID:   &userIDStr,
-		AfterState: map[string]interface{}{"email": user.Email, "provider": "google"},
+		AfterState: map[string]interface{}{"email": existingUser.Email, "provider": "google"},
 	})
 
-	// practitionerID, err := s.practitionerSvc.GetPractitionerByUserID(ctx, user.ID.String())
-	// if err != nil {
-	// 	return nil, err
-	// }
-
-	return s.issueTokens(ctx, user, authProvider.UserID.String())
+	token, err := s.issueTokens(ctx, existingUser, entityID)
+	if err != nil {
+		return nil, err
+	}
+	token.IsNewUser = isNewUser
+	return token, nil
 }
 
 func (s *service) fetchGoogleUserInfo(ctx context.Context, token *oauth2.Token) (*GoogleUserInfo, error) {
