@@ -80,10 +80,16 @@ func (rq *RqSection) ToSection() *Section {
 		sections = append(sections, childSection)
 	}
 
+	var templateID *uuid.UUID
+	if rq.TemplateID != uuid.Nil {
+		templateID = &rq.TemplateID
+	}
+
 	return &Section{
 		ID:               sectionID,
 		InvoiceID:        rq.InvoiceID,
-		InvoiceSection:   rq.SectionType,
+		TemplateID:       templateID,
+		InvoiceSection:   &rq.SectionType,
 		DocumentNumber:   rq.DocumentNumber,
 		TaxMethod:        rq.TaxMethod,
 		PaymentMethod:    rq.PaymentMethod,
@@ -112,8 +118,12 @@ func (rq *RqUpdateSection) ToSection() *Section {
 		section.InvoiceID = rq.InvoiceID
 	}
 
+	if rq.TemplateID != nil {
+		section.TemplateID = rq.TemplateID
+	}
+
 	if rq.SectionType != nil {
-		section.InvoiceSection = *rq.SectionType
+		section.InvoiceSection = rq.SectionType
 	}
 
 	if rq.DocumentNumber != nil {
@@ -189,7 +199,8 @@ func (rq *RqUpdateSection) ToSection() *Section {
 type Section struct {
 	ID               uuid.UUID    `db:"id"`
 	InvoiceID        *uuid.UUID   `db:"invoice_id"`
-	InvoiceSection   SectionType  `db:"invoice_section"`
+	TemplateID       *uuid.UUID   `db:"template_id"`
+	InvoiceSection   *SectionType `db:"invoice_section"`
 	DocumentNumber   string       `db:"document_number"`
 	TaxMethod        *TaxMethod   `db:"tax_method"`
 	PaymentMethod    *string      `db:"payment_method"`
@@ -218,10 +229,21 @@ func (s *Section) ToRsSection() *RsSection {
 		rsSections = append(rsSections, childSec.ToRsSection())
 	}
 
+	var templateID uuid.UUID
+	if s.TemplateID != nil {
+		templateID = *s.TemplateID
+	}
+
+	var sectionType SectionType
+	if s.InvoiceSection != nil {
+		sectionType = *s.InvoiceSection
+	}
+
 	return &RsSection{
 		ID:               s.ID,
 		InvoiceID:        s.InvoiceID,
-		SectionType:      s.InvoiceSection,
+		TemplateID:       templateID,
+		SectionType:      sectionType,
 		DocumentNumber:   s.DocumentNumber,
 		TaxMethod:        s.TaxMethod,
 		PaymentMethod:    s.PaymentMethod,

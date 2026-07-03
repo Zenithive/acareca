@@ -29,10 +29,11 @@ func (ct *CalculationStatement) Build(ctx context.Context, invoiceId *uuid.UUID)
 		entry.InvoiceSectionID = &sectionID
 	}
 
+	sectionType := CALCULATIONSTATEMENT
 	return Section{
 		ID:               sectionID,
 		InvoiceID:        invoiceId,
-		InvoiceSection:   CALCULATIONSTATEMENT,
+		InvoiceSection:   &sectionType,
 		DocumentNumber:   docNumber,
 		TaxMethod:        ct.TaxMethod,
 		PaymentMethod:    ct.PaymentMethod,
@@ -61,10 +62,11 @@ func (ct *SfaInvoice) Build(ctx context.Context, invoiceId *uuid.UUID) (Section,
 		entry.InvoiceSectionID = &sectionID
 	}
 
+	sectionType := TAXINVOICE
 	return Section{
 		ID:               sectionID,
 		InvoiceID:        invoiceId,
-		InvoiceSection:   TAXINVOICE,
+		InvoiceSection:   &sectionType,
 		DocumentNumber:   docNumber,
 		TaxMethod:        ct.TaxMethod,
 		PaymentMethod:    ct.PaymentMethod,
@@ -93,10 +95,11 @@ func (ct *RemittanceInvoice) Build(ctx context.Context, invoiceId *uuid.UUID) (S
 		entry.InvoiceSectionID = &sectionID
 	}
 
+	sectionType := REMITTANCEINVOICE
 	return Section{
 		ID:               sectionID,
 		InvoiceID:        invoiceId,
-		InvoiceSection:   REMITTANCEINVOICE,
+		InvoiceSection:   &sectionType,
 		DocumentNumber:   docNumber,
 		TaxMethod:        ct.TaxMethod,
 		PaymentMethod:    ct.PaymentMethod,
@@ -125,10 +128,11 @@ func (ct *RctiInvoice) Build(ctx context.Context, invoiceId *uuid.UUID) (Section
 		entry.InvoiceSectionID = &sectionID
 	}
 
+	sectionType := RCTI
 	return Section{
 		ID:               sectionID,
 		InvoiceID:        invoiceId,
-		InvoiceSection:   RCTI,
+		InvoiceSection:   &sectionType,
 		DocumentNumber:   docNumber,
 		TaxMethod:        ct.TaxMethod,
 		PaymentMethod:    ct.PaymentMethod,

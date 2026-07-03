@@ -151,7 +151,7 @@ func (r *RqUpdateInvoice) ApplyToInvoice(inv *Invoice) *Invoice {
 			sec := rqSec.ToSection()
 
 			if existingSec, ok := existingSectionMap[sec.ID]; ok {
-				if sec.InvoiceSection == "" {
+				if sec.InvoiceSection == nil || *sec.InvoiceSection == "" {
 					sec.InvoiceSection = existingSec.InvoiceSection
 				}
 				if sec.InvoiceID == nil {

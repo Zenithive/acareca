@@ -48,6 +48,29 @@ func toFloat64(v any) float64 {
 }
 
 func init() {
+	raymond.RegisterHelper("coalesce", func(args ...interface{}) string {
+		// Last argument is always the Handlebars options object, skip it
+		values := args[:len(args)-1]
+		for _, v := range values {
+			if v != nil {
+				switch val := v.(type) {
+				case string:
+					if val != "" {
+						return val
+					}
+				case *string:
+					if val != nil && *val != "" {
+						return *val
+					}
+				default:
+					// For non-string types, return if not nil
+					return fmt.Sprintf("%v", val)
+				}
+			}
+		}
+		return ""
+	})
+
 	raymond.RegisterHelper("format_currency", func(amount float64) string {
 		return fmt.Sprintf("$%.2f", math.Abs(amount))
 	})

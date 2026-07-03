@@ -104,9 +104,19 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, rq RqGlobalTemplate)
 		return nil, err
 	}
 
+	// Decrypt the HTML and CSS before sending to frontend
+	htmlStr, err := crypto.DecryptAndDecompress(t.Html, s.encryptionKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt html: %w", err)
+	}
+	cssStr, err := crypto.DecryptAndDecompress(t.Css, s.encryptionKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt css: %w", err)
+	}
+
 	rs := t.ToRs()
-	rs.Html = base64.StdEncoding.EncodeToString(t.Html)
-	rs.Css = base64.StdEncoding.EncodeToString(t.Css)
+	rs.Html = base64.StdEncoding.EncodeToString([]byte(htmlStr))
+	rs.Css = base64.StdEncoding.EncodeToString([]byte(cssStr))
 	return &rs, nil
 }
 
@@ -116,9 +126,19 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID) (*RsTemplate, error) {
 		return nil, err
 	}
 
+	// Decrypt the HTML and CSS before sending to frontend
+	html, err := crypto.DecryptAndDecompress(t.Html, s.encryptionKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt html: %w", err)
+	}
+	css, err := crypto.DecryptAndDecompress(t.Css, s.encryptionKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt css: %w", err)
+	}
+
 	rs := t.ToRs()
-	rs.Html = base64.StdEncoding.EncodeToString(t.Html)
-	rs.Css = base64.StdEncoding.EncodeToString(t.Css)
+	rs.Html = base64.StdEncoding.EncodeToString([]byte(html))
+	rs.Css = base64.StdEncoding.EncodeToString([]byte(css))
 	return &rs, nil
 }
 
