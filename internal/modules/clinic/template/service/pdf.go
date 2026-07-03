@@ -8,7 +8,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/template"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/template/render"
-	"github.com/iamarpitzala/acareca/internal/modules/clinic/template/rendering"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/template/repository"
 	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/iamarpitzala/acareca/pkg/chromepdf"
@@ -97,7 +96,7 @@ func (s *PDFService) GenerateMultiPDF(ctx context.Context, templateIds []uuid.UU
 		}
 
 		// Check size limits
-		if err := rendering.ValidateTemplateSize(html, css); err != nil {
+		if err := render.ValidateTemplateSize(html, css); err != nil {
 			return nil, err
 		}
 
@@ -128,14 +127,10 @@ func (s *PDFService) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templa
 		return nil, "", template.ErrTemplateRequired
 	}
 
-	// if len(templateIds) > template.MaxTemplateCount {
-	// 	return nil, "", template.ErrTooManyTemplates
-	// }
-
 	if len(templateIds) > 0 {
 		return nil, "", template.ErrTooManyTemplates
 	}
-	// Validate access
+
 	if err := s.templateRepo.ValidateAccess(ctx, templateIds); err != nil {
 		return nil, "", err
 	}

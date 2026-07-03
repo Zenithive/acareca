@@ -44,7 +44,7 @@ func CalculationHTML() string {
 			{Header: "BAS Code", Width: "15%", Align: "center", FieldType: "bas_code"},
 		},
 	})
-	
+
 	// Build settlement table
 	settlementTable := DataTable(TableConfig{
 		Title:         "3. NET SETTLEMENT",
@@ -55,7 +55,7 @@ func CalculationHTML() string {
 			{Header: "BAS Code", Width: "15%", Align: "center", FieldType: "bas_code"},
 		},
 	})
-	
+
 	return fmt.Sprintf(`<div class="invoice-page"><div style="display: block; width: 100%%;">%s</div>
 
   %s
@@ -85,5 +85,5 @@ func CalculationHTML() string {
   %s
 
   %s
-</div>`, CalculationStatementHeader(DefaultPreparedForBanner()), patientFeesTable, ServiceFeeIntroRowCalculation(), settlementTable, FooterNotesSection("{{footer_note}}"))
+</div>`, CalculationStatementHeader(DefaultPreparedForBanner()), patientFeesTable, ServiceFeeIntroRowCalculation(), settlementTable, FooterNotesSection("{{footer_note}}"), PaymentDetailsSection())
 }

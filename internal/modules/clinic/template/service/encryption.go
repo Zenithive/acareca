@@ -25,9 +25,7 @@ type EncryptionService struct {
 	key []byte
 }
 
-// NewEncryptionService creates an encryption service with validated key
 func NewEncryptionService(key string) IEncryptionService {
-	// Key validation happens in container, so we trust it here
 	return &EncryptionService{key: []byte(key)}
 }
 

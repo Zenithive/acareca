@@ -2,34 +2,34 @@ package template
 
 import (
 	"github.com/google/uuid"
-	"github.com/iamarpitzala/acareca/internal/modules/clinic/template/defaults"
+	"github.com/iamarpitzala/acareca/internal/modules/clinic/template/templates"
 	"github.com/iamarpitzala/acareca/internal/shared/common"
 )
 
 // DefaultTemplates returns the full set of default global invoice document templates.
 func DefaultTemplates() []RqGlobalTemplate {
-	css := defaults.CSS()
+	css := templates.CSS()
 
 	return []RqGlobalTemplate{
 		{
 			Name:      "Calculation Statement",
 			IsDefault: true,
 			IsActive:  true,
-			Html:      defaults.CalculationHTML(),
+			Html:      templates.CalculationHTML(),
 			Css:       css,
 		},
 		{
 			Name:      "Tax Invoice",
 			IsDefault: false,
 			IsActive:  true,
-			Html:      defaults.TaxInvoiceHTML(),
+			Html:      templates.TaxInvoiceHTML(),
 			Css:       css,
 		},
 		{
 			Name:      "Remittance Advice",
 			IsDefault: false,
 			IsActive:  true,
-			Html:      defaults.RemittanceHTML(),
+			Html:      templates.RemittanceHTML(),
 			Css:       css,
 		},
 	}
