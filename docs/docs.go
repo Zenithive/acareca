@@ -13647,11 +13647,20 @@ const docTemplate = `{
                 "abn": {
                     "type": "string"
                 },
+                "accountName": {
+                    "type": "string"
+                },
+                "accountNumber": {
+                    "type": "string"
+                },
                 "address": {
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/contact.RqAddress"
                     }
+                },
+                "bsb": {
+                    "type": "string"
                 },
                 "clinic_id": {
                     "type": "string"
@@ -13666,6 +13675,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "note": {
+                    "type": "string"
+                },
+                "paymentMethod": {
                     "type": "string"
                 },
                 "phone": {
@@ -13693,11 +13705,20 @@ const docTemplate = `{
                 "abn": {
                     "type": "string"
                 },
+                "accountName": {
+                    "type": "string"
+                },
+                "accountNumber": {
+                    "type": "string"
+                },
                 "address": {
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/contact.RqAddress"
                     }
+                },
+                "bsb": {
+                    "type": "string"
                 },
                 "clinic_id": {
                     "type": "string"
@@ -13715,6 +13736,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "note": {
+                    "type": "string"
+                },
+                "paymentMethod": {
                     "type": "string"
                 },
                 "phone": {
@@ -13771,11 +13795,20 @@ const docTemplate = `{
                 "abn": {
                     "type": "string"
                 },
+                "accountName": {
+                    "type": "string"
+                },
+                "accountNumber": {
+                    "type": "string"
+                },
                 "address": {
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/contact.RsAddress"
                     }
+                },
+                "bsb": {
+                    "type": "string"
                 },
                 "clinic_id": {
                     "type": "string"
@@ -13796,6 +13829,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "note": {
+                    "type": "string"
+                },
+                "paymentMethod": {
                     "type": "string"
                 },
                 "phone": {
@@ -15240,6 +15276,12 @@ const docTemplate = `{
                 "basCode": {
                     "$ref": "#/definitions/item.BasCode"
                 },
+                "children": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/item.RqEntry"
+                    }
+                },
                 "description": {
                     "type": "string"
                 },
@@ -15257,6 +15299,9 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "name": {
+                    "type": "string"
+                },
+                "parentId": {
                     "type": "string"
                 },
                 "sortOrder": {
@@ -15273,6 +15318,12 @@ const docTemplate = `{
                 "basCode": {
                     "$ref": "#/definitions/item.BasCode"
                 },
+                "children": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/item.RqUpdateEntry"
+                    }
+                },
                 "description": {
                     "type": "string"
                 },
@@ -15293,6 +15344,9 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "name": {
+                    "type": "string"
+                },
+                "parentId": {
                     "type": "string"
                 },
                 "sortOrder": {
@@ -15309,6 +15363,12 @@ const docTemplate = `{
                 "basCode": {
                     "$ref": "#/definitions/item.BasCode"
                 },
+                "children": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/item.RsEntry"
+                    }
+                },
                 "description": {
                     "type": "string"
                 },
@@ -15329,6 +15389,9 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "name": {
+                    "type": "string"
+                },
+                "parentId": {
                     "type": "string"
                 },
                 "sortOrder": {
@@ -15593,15 +15656,6 @@ const docTemplate = `{
                 "documentNumber"
             ],
             "properties": {
-                "accountName": {
-                    "type": "string"
-                },
-                "accountNumber": {
-                    "type": "string"
-                },
-                "bsb": {
-                    "type": "string"
-                },
                 "documentNumber": {
                     "type": "string"
                 },
@@ -15614,10 +15668,10 @@ const docTemplate = `{
                 "invoiceId": {
                     "type": "string"
                 },
-                "paymentDate": {
+                "parentSectionId": {
                     "type": "string"
                 },
-                "paymentMethod": {
+                "paymentDate": {
                     "type": "string"
                 },
                 "paymentReference": {
@@ -15625,6 +15679,12 @@ const docTemplate = `{
                 },
                 "sectionType": {
                     "$ref": "#/definitions/section.SectionType"
+                },
+                "sections": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/section.RqSection"
+                    }
                 },
                 "taxMethod": {
                     "enum": [
@@ -15649,15 +15709,6 @@ const docTemplate = `{
                 "SectionType": {
                     "$ref": "#/definitions/section.SectionType"
                 },
-                "accountName": {
-                    "type": "string"
-                },
-                "accountNumber": {
-                    "type": "string"
-                },
-                "bsb": {
-                    "type": "string"
-                },
                 "deleteEntries": {
                     "type": "array",
                     "items": {
@@ -15679,14 +15730,20 @@ const docTemplate = `{
                 "invoiceId": {
                     "type": "string"
                 },
-                "paymentDate": {
+                "parentSectionId": {
                     "type": "string"
                 },
-                "paymentMethod": {
+                "paymentDate": {
                     "type": "string"
                 },
                 "paymentReference": {
                     "type": "string"
+                },
+                "sections": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/section.RqUpdateSection"
+                    }
                 },
                 "taxMethod": {
                     "enum": [
@@ -15708,15 +15765,6 @@ const docTemplate = `{
         "section.RsSection": {
             "type": "object",
             "properties": {
-                "accountName": {
-                    "type": "string"
-                },
-                "accountNumber": {
-                    "type": "string"
-                },
-                "bsb": {
-                    "type": "string"
-                },
                 "createdAt": {
                     "type": "string"
                 },
@@ -15735,10 +15783,10 @@ const docTemplate = `{
                 "invoiceId": {
                     "type": "string"
                 },
-                "paymentDate": {
+                "parentSectionId": {
                     "type": "string"
                 },
-                "paymentMethod": {
+                "paymentDate": {
                     "type": "string"
                 },
                 "paymentReference": {
@@ -15746,6 +15794,12 @@ const docTemplate = `{
                 },
                 "sectionType": {
                     "$ref": "#/definitions/section.SectionType"
+                },
+                "sections": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/section.RsSection"
+                    }
                 },
                 "taxMethod": {
                     "$ref": "#/definitions/section.TaxMethod"

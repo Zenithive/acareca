@@ -34,10 +34,6 @@ type RqSection struct {
 	SectionType      SectionType     `json:"sectionType" `
 	DocumentNumber   string          `json:"documentNumber" validate:"required"`
 	TaxMethod        *TaxMethod      `json:"taxMethod,omitempty" validate:"omitempty,oneof=INCLUSIVE EXCLUSIVE NO_TAX"`
-	PaymentMethod    *string         `json:"paymentMethod,omitempty"`
-	AccountName      *string         `json:"accountName,omitempty"`
-	Bsb              *string         `json:"bsb,omitempty"`
-	AccountNumber    *string         `json:"accountNumber,omitempty"`
 	PaymentDate      *string         `json:"paymentDate"`
 	PaymentReference *string         `json:"paymentReference,omitempty"`
 	Entries          []*item.RqEntry `json:"entries,omitempty" validate:"omitempty,dive"`
@@ -53,10 +49,6 @@ type RqUpdateSection struct {
 	SectionType      *SectionType          `json:"SectionType,omitempty"`
 	DocumentNumber   *string               `json:"documentNumber,omitempty"`
 	TaxMethod        *TaxMethod            `json:"taxMethod,omitempty" validate:"omitempty,oneof=INCLUSIVE EXCLUSIVE NO_TAX"`
-	PaymentMethod    *string               `json:"paymentMethod,omitempty"`
-	AccountName      *string               `json:"accountName,omitempty"`
-	Bsb              *string               `json:"bsb,omitempty"`
-	AccountNumber    *string               `json:"accountNumber,omitempty"`
 	PaymentDate      *string               `json:"paymentDate"`
 	PaymentReference *string               `json:"paymentReference,omitempty"`
 	Entries          []*item.RqUpdateEntry `json:"entries,omitempty" validate:"omitempty,dive"`
@@ -86,10 +78,6 @@ func (rq *RqSection) ToSection() *Section {
 		InvoiceSection:   rq.SectionType,
 		DocumentNumber:   rq.DocumentNumber,
 		TaxMethod:        rq.TaxMethod,
-		PaymentMethod:    rq.PaymentMethod,
-		AccountName:      rq.AccountName,
-		Bsb:              rq.Bsb,
-		AccountNumber:    rq.AccountNumber,
 		PaymentDate:      rq.PaymentDate,
 		PaymentReference: rq.PaymentReference,
 		Entries:          entries,
@@ -122,22 +110,6 @@ func (rq *RqUpdateSection) ToSection() *Section {
 
 	if rq.TaxMethod != nil {
 		section.TaxMethod = rq.TaxMethod
-	}
-
-	if rq.PaymentMethod != nil {
-		section.PaymentMethod = rq.PaymentMethod
-	}
-
-	if rq.AccountName != nil {
-		section.AccountName = rq.AccountName
-	}
-
-	if rq.Bsb != nil {
-		section.Bsb = rq.Bsb
-	}
-
-	if rq.AccountNumber != nil {
-		section.AccountNumber = rq.AccountNumber
 	}
 
 	if rq.PaymentDate != nil {
@@ -192,10 +164,6 @@ type Section struct {
 	InvoiceSection   SectionType  `db:"invoice_section"`
 	DocumentNumber   string       `db:"document_number"`
 	TaxMethod        *TaxMethod   `db:"tax_method"`
-	PaymentMethod    *string      `db:"payment_method"`
-	AccountName      *string      `db:"account_name"`
-	Bsb              *string      `db:"bsb_number"`
-	AccountNumber    *string      `db:"account_number"`
 	PaymentDate      *string      `db:"payment_date"`
 	PaymentReference *string      `db:"payment_reference"`
 	Entries          []*item.Item `db:"-"`
@@ -224,10 +192,6 @@ func (s *Section) ToRsSection() *RsSection {
 		SectionType:      s.InvoiceSection,
 		DocumentNumber:   s.DocumentNumber,
 		TaxMethod:        s.TaxMethod,
-		PaymentMethod:    s.PaymentMethod,
-		AccountName:      s.AccountName,
-		Bsb:              s.Bsb,
-		AccountNumber:    s.AccountNumber,
 		PaymentDate:      s.PaymentDate,
 		PaymentReference: s.PaymentReference,
 		Entries:          rsEntries,
@@ -246,10 +210,6 @@ type RsSection struct {
 	SectionType      SectionType     `json:"sectionType"`
 	DocumentNumber   string          `json:"documentNumber"`
 	TaxMethod        *TaxMethod      `json:"taxMethod,omitempty"`
-	PaymentMethod    *string         `json:"paymentMethod,omitempty"`
-	AccountName      *string         `json:"accountName,omitempty"`
-	Bsb              *string         `json:"bsb,omitempty"`
-	AccountNumber    *string         `json:"accountNumber,omitempty"`
 	PaymentDate      *string         `json:"paymentDate,omitempty"`
 	PaymentReference *string         `json:"paymentReference,omitempty"`
 	Entries          []*item.RsEntry `json:"entries"`
@@ -262,10 +222,6 @@ type RsSection struct {
 type DocumentBase struct {
 	DocumentNumber   string
 	TaxMethod        *TaxMethod
-	PaymentMethod    *string
-	AccountName      *string
-	Bsb              *string
-	AccountNumber    *string
 	PaymentDate      *string
 	PaymentReference *string
 	Entries          []*item.Item

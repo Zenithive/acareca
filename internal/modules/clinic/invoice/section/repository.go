@@ -63,10 +63,9 @@ func (r *Repository) createSectionRecursive(ctx context.Context, tx *sqlx.Tx, in
 
 	query := `
 		INSERT INTO tbl_map_invoice_section (
-			id, invoice_id, invoice_section, document_number, tax_method,
-			payment_method, account_name, bsb_number, account_number, payment_date, payment_reference, parent_section_id
+			id, invoice_id, invoice_section, document_number, tax_method, payment_date, payment_reference, parent_section_id
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		RETURNING created_at
 	`
 
@@ -78,10 +77,6 @@ func (r *Repository) createSectionRecursive(ctx context.Context, tx *sqlx.Tx, in
 		section.InvoiceSection,
 		section.DocumentNumber,
 		section.TaxMethod,
-		section.PaymentMethod,
-		section.AccountName,
-		section.Bsb,
-		section.AccountNumber,
 		section.PaymentDate,
 		section.PaymentReference,
 		section.ParentSectionID,
@@ -138,14 +133,10 @@ func (r *Repository) Update(ctx context.Context, tx *sqlx.Tx, sections []Section
 		SET 
 			document_number = $1,
 			tax_method = $2,
-			payment_method = $3,
-			account_name = $4,
-			bsb_number = $5,
-			account_number = $6,
-			payment_date = $7,
-			payment_reference = $8,
+			payment_date = $3,
+			payment_reference = $4,
 			updated_at = NOW()
-		WHERE id = $9 AND deleted_at IS NULL
+		WHERE id = $5 AND deleted_at IS NULL
 		RETURNING updated_at
 	`
 
@@ -154,10 +145,6 @@ func (r *Repository) Update(ctx context.Context, tx *sqlx.Tx, sections []Section
 			query,
 			sections[i].DocumentNumber,
 			sections[i].TaxMethod,
-			sections[i].PaymentMethod,
-			sections[i].AccountName,
-			sections[i].Bsb,
-			sections[i].AccountNumber,
 			sections[i].PaymentDate,
 			sections[i].PaymentReference,
 			sections[i].ID,
@@ -244,8 +231,7 @@ func (r *Repository) GetByID(ctx context.Context, invoiceID, sectionID uuid.UUID
 
 	query := `
 		SELECT 
-			id, invoice_id, invoice_section, document_number, tax_method, 
-			payment_method, account_name, bsb_number, account_number, payment_date::text, payment_reference,
+			id, invoice_id, invoice_section, document_number, tax_method, payment_date::text, payment_reference,
 			created_at, updated_at
 		FROM tbl_map_invoice_section
 		WHERE invoice_id = $1 AND id = $2 AND deleted_at IS NULL
@@ -258,10 +244,6 @@ func (r *Repository) GetByID(ctx context.Context, invoiceID, sectionID uuid.UUID
 		&section.InvoiceSection,
 		&section.DocumentNumber,
 		&section.TaxMethod,
-		&section.PaymentMethod,
-		&section.AccountName,
-		&section.Bsb,
-		&section.AccountNumber,
 		&section.PaymentDate,
 		&section.PaymentReference,
 		&section.CreatedAt,
@@ -298,8 +280,7 @@ func (r *Repository) ListByInvoiceID(ctx context.Context, invoiceID uuid.UUID) (
 
 	query := `
 		SELECT 
-			id, invoice_id, invoice_section, document_number, tax_method,
-			payment_method, account_name, bsb, account_number, payment_date::text, payment_reference,
+			id, invoice_id, invoice_section, document_number, tax_method, payment_date::text, payment_reference,
 			parent_section_id, created_at, updated_at
 		FROM tbl_map_invoice_section
 		WHERE invoice_id = $1 AND deleted_at IS NULL
@@ -323,10 +304,6 @@ func (r *Repository) ListByInvoiceID(ctx context.Context, invoiceID uuid.UUID) (
 			&section.InvoiceSection,
 			&section.DocumentNumber,
 			&section.TaxMethod,
-			&section.PaymentMethod,
-			&section.AccountName,
-			&section.Bsb,
-			&section.AccountNumber,
 			&section.PaymentDate,
 			&section.PaymentReference,
 			&section.ParentSectionID,
@@ -403,8 +380,7 @@ func (r *Repository) GetByType(ctx context.Context, invoiceID uuid.UUID, section
 
 	query := `
 		SELECT 
-			id, invoice_id, invoice_section, document_number, tax_method,
-			payment_method, account_name, bsb_number, account_number, payment_date::text, payment_reference,
+			id, invoice_id, invoice_section, document_number, tax_method, payment_date::text, payment_reference,
 			created_at, updated_at
 		FROM tbl_map_invoice_section
 		WHERE invoice_id = $1 AND invoice_section = $2 AND deleted_at IS NULL
@@ -418,10 +394,6 @@ func (r *Repository) GetByType(ctx context.Context, invoiceID uuid.UUID, section
 		&section.InvoiceSection,
 		&section.DocumentNumber,
 		&section.TaxMethod,
-		&section.PaymentMethod,
-		&section.AccountName,
-		&section.Bsb,
-		&section.AccountNumber,
 		&section.PaymentDate,
 		&section.PaymentReference,
 		&section.CreatedAt,
@@ -537,15 +509,11 @@ func (r *Repository) updateSection(ctx context.Context, tx *sqlx.Tx, section Sec
 			document_number = $1,
 			tax_method = $2,
 			invoice_section = $3,
-			payment_method = $4,
-			account_name = $5,
-			bsb = $6,
-			account_number = $7,
-			payment_date = $8,
-			payment_reference = $9,
-			parent_section_id = $10,
+			payment_date = $4,
+			payment_reference = $5,
+			parent_section_id = $6,
 			updated_at = NOW()
-		WHERE id = $11 AND deleted_at IS NULL
+		WHERE id = $7 AND deleted_at IS NULL
 	`
 
 	_, err := tx.ExecContext(
@@ -554,10 +522,6 @@ func (r *Repository) updateSection(ctx context.Context, tx *sqlx.Tx, section Sec
 		section.DocumentNumber,
 		section.TaxMethod,
 		section.InvoiceSection,
-		section.PaymentMethod,
-		section.AccountName,
-		section.Bsb,
-		section.AccountNumber,
 		section.PaymentDate,
 		section.PaymentReference,
 		section.ParentSectionID,

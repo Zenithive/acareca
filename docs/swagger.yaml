@@ -1648,10 +1648,16 @@ definitions:
     properties:
       abn:
         type: string
+      accountName:
+        type: string
+      accountNumber:
+        type: string
       address:
         items:
           $ref: '#/definitions/contact.RqAddress'
         type: array
+      bsb:
+        type: string
       clinic_id:
         type: string
       email:
@@ -1661,6 +1667,8 @@ definitions:
       lname:
         type: string
       note:
+        type: string
+      paymentMethod:
         type: string
       phone:
         type: string
@@ -1683,10 +1691,16 @@ definitions:
     properties:
       abn:
         type: string
+      accountName:
+        type: string
+      accountNumber:
+        type: string
       address:
         items:
           $ref: '#/definitions/contact.RqAddress'
         type: array
+      bsb:
+        type: string
       clinic_id:
         type: string
       email:
@@ -1698,6 +1712,8 @@ definitions:
       lname:
         type: string
       note:
+        type: string
+      paymentMethod:
         type: string
       phone:
         type: string
@@ -1733,10 +1749,16 @@ definitions:
     properties:
       abn:
         type: string
+      accountName:
+        type: string
+      accountNumber:
+        type: string
       address:
         items:
           $ref: '#/definitions/contact.RsAddress'
         type: array
+      bsb:
+        type: string
       clinic_id:
         type: string
       created_at:
@@ -1750,6 +1772,8 @@ definitions:
       lname:
         type: string
       note:
+        type: string
+      paymentMethod:
         type: string
       phone:
         type: string
@@ -2724,6 +2748,10 @@ definitions:
         type: number
       basCode:
         $ref: '#/definitions/item.BasCode'
+      children:
+        items:
+          $ref: '#/definitions/item.RqEntry'
+        type: array
       description:
         type: string
       entryType:
@@ -2736,6 +2764,8 @@ definitions:
       isFinal:
         type: boolean
       name:
+        type: string
+      parentId:
         type: string
       sortOrder:
         type: integer
@@ -2749,6 +2779,10 @@ definitions:
         type: number
       basCode:
         $ref: '#/definitions/item.BasCode'
+      children:
+        items:
+          $ref: '#/definitions/item.RqUpdateEntry'
+        type: array
       description:
         type: string
       entryType:
@@ -2763,6 +2797,8 @@ definitions:
       isFinal:
         type: boolean
       name:
+        type: string
+      parentId:
         type: string
       sortOrder:
         type: integer
@@ -2773,6 +2809,10 @@ definitions:
         type: number
       basCode:
         $ref: '#/definitions/item.BasCode'
+      children:
+        items:
+          $ref: '#/definitions/item.RsEntry'
+        type: array
       description:
         type: string
       entryType:
@@ -2787,6 +2827,8 @@ definitions:
       isFinal:
         type: boolean
       name:
+        type: string
+      parentId:
         type: string
       sortOrder:
         type: integer
@@ -2958,12 +3000,6 @@ definitions:
     type: object
   section.RqSection:
     properties:
-      accountName:
-        type: string
-      accountNumber:
-        type: string
-      bsb:
-        type: string
       documentNumber:
         type: string
       entries:
@@ -2972,14 +3008,18 @@ definitions:
         type: array
       invoiceId:
         type: string
-      paymentDate:
+      parentSectionId:
         type: string
-      paymentMethod:
+      paymentDate:
         type: string
       paymentReference:
         type: string
       sectionType:
         $ref: '#/definitions/section.SectionType'
+      sections:
+        items:
+          $ref: '#/definitions/section.RqSection'
+        type: array
       taxMethod:
         allOf:
         - $ref: '#/definitions/section.TaxMethod'
@@ -2996,12 +3036,6 @@ definitions:
     properties:
       SectionType:
         $ref: '#/definitions/section.SectionType'
-      accountName:
-        type: string
-      accountNumber:
-        type: string
-      bsb:
-        type: string
       deleteEntries:
         items:
           type: string
@@ -3016,12 +3050,16 @@ definitions:
         type: string
       invoiceId:
         type: string
-      paymentDate:
+      parentSectionId:
         type: string
-      paymentMethod:
+      paymentDate:
         type: string
       paymentReference:
         type: string
+      sections:
+        items:
+          $ref: '#/definitions/section.RqUpdateSection'
+        type: array
       taxMethod:
         allOf:
         - $ref: '#/definitions/section.TaxMethod'
@@ -3034,12 +3072,6 @@ definitions:
     type: object
   section.RsSection:
     properties:
-      accountName:
-        type: string
-      accountNumber:
-        type: string
-      bsb:
-        type: string
       createdAt:
         type: string
       documentNumber:
@@ -3052,14 +3084,18 @@ definitions:
         type: string
       invoiceId:
         type: string
-      paymentDate:
+      parentSectionId:
         type: string
-      paymentMethod:
+      paymentDate:
         type: string
       paymentReference:
         type: string
       sectionType:
         $ref: '#/definitions/section.SectionType'
+      sections:
+        items:
+          $ref: '#/definitions/section.RsSection'
+        type: array
       taxMethod:
         $ref: '#/definitions/section.TaxMethod'
       templateId:
