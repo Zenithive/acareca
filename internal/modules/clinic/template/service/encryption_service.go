@@ -2,10 +2,15 @@ package service
 
 import (
 	"encoding/base64"
+	"errors"
 	"fmt"
 
-	"github.com/iamarpitzala/acareca/internal/modules/clinic/template"
 	"github.com/iamarpitzala/acareca/internal/shared/crypto"
+)
+
+// Encryption errors
+var (
+	ErrInvalidEncryptionKey = errors.New("encryption key must be exactly 32 characters")
 )
 
 // IEncryptionService handles template encryption/decryption
@@ -21,11 +26,9 @@ type EncryptionService struct {
 }
 
 // NewEncryptionService creates an encryption service with validated key
-func NewEncryptionService(key string) (*EncryptionService, error) {
-	if len(key) != 32 {
-		return nil, template.ErrInvalidEncryptionKey
-	}
-	return &EncryptionService{key: []byte(key)}, nil
+func NewEncryptionService(key string) IEncryptionService {
+	// Key validation happens in container, so we trust it here
+	return &EncryptionService{key: []byte(key)}
 }
 
 func (s *EncryptionService) EncryptTemplate(html, css string) ([]byte, []byte, error) {

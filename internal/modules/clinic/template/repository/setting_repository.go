@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/template/domain"
@@ -38,8 +39,8 @@ type dbSetting struct {
 	HeaderFontFamily string     `db:"header_font_family"`
 	IsLogo           bool       `db:"is_logo"`
 	LogoID           *uuid.UUID `db:"logo_id"`
-	TermsText        *string    `db:"terms_text"`
-	PaymentTerms     *int       `db:"payment_terms"`
+	TermText         *string    `db:"terms_text"`
+	PaymentTerms     *string    `db:"payment_terms"`
 	IsWaterMark      bool       `db:"is_watermark"`
 	WaterMarkText    *string    `db:"watermark_text"`
 	TableStyle       *string    `db:"table_style"`
@@ -114,7 +115,7 @@ func (r *SettingRepository) Create(ctx context.Context, st *domain.Setting) erro
 		st.HeaderFontFamily,
 		st.IsLogo,
 		st.LogoID,
-		st.TermsText,
+		st.TermText,
 		st.PaymentTerms,
 		st.IsWaterMark,
 		st.WaterMarkText,
@@ -154,7 +155,7 @@ func (r *SettingRepository) Update(ctx context.Context, st *domain.Setting, invo
 		st.InvoiceID = &invoiceId
 	}
 
-	var updatedAt *string
+	var createdAt, updatedAt string
 	err := r.db.QueryRowContext(ctx, q,
 		st.ID,
 		st.InvoiceID,
@@ -164,15 +165,25 @@ func (r *SettingRepository) Update(ctx context.Context, st *domain.Setting, invo
 		st.HeaderFontFamily,
 		st.IsLogo,
 		st.LogoID,
-		st.TermsText,
+		st.TermText,
 		st.PaymentTerms,
 		st.IsWaterMark,
 		st.WaterMarkText,
 		st.TableStyle,
-	).Scan(&st.ID, &st.CreatedAt, &updatedAt)
+	).Scan(&st.ID, &createdAt, &updatedAt)
+	
+	if err != nil {
+		return err
+	}
 
-	if updatedAt != nil {
-		st.UpdatedAt = updatedAt
+	// Parse timestamps
+	if t, err := time.Parse(time.RFC3339, createdAt); err == nil {
+		st.CreatedAt = t
+	}
+	if updatedAt != "" {
+		if t, err := time.Parse(time.RFC3339, updatedAt); err == nil {
+			st.UpdatedAt = &t
+		}
 	}
 
 	return err
@@ -180,7 +191,7 @@ func (r *SettingRepository) Update(ctx context.Context, st *domain.Setting, invo
 
 // toDomain converts database model to domain entity
 func (r *SettingRepository) toDomain(db *dbSetting) *domain.Setting {
-	return &domain.Setting{
+	setting := &domain.Setting{
 		ID:               db.ID,
 		InvoiceID:        db.InvoiceID,
 		PrimaryColor:     db.PrimaryColor,
@@ -189,10 +200,27 @@ func (r *SettingRepository) toDomain(db *dbSetting) *domain.Setting {
 		HeaderFontFamily: db.HeaderFontFamily,
 		IsLogo:           db.IsLogo,
 		LogoID:           db.LogoID,
-		TermsText:        db.TermsText,
+		TermText:         db.TermText,
 		PaymentTerms:     db.PaymentTerms,
 		IsWaterMark:      db.IsWaterMark,
 		WaterMarkText:    db.WaterMarkText,
 		TableStyle:       db.TableStyle,
 	}
+	
+	// Parse timestamps
+	if t, err := time.Parse(time.RFC3339, db.CreatedAt); err == nil {
+		setting.CreatedAt = t
+	}
+	if db.UpdatedAt != nil {
+		if t, err := time.Parse(time.RFC3339, *db.UpdatedAt); err == nil {
+			setting.UpdatedAt = &t
+		}
+	}
+	if db.DeletedAt != nil {
+		if t, err := time.Parse(time.RFC3339, *db.DeletedAt); err == nil {
+			setting.DeletedAt = &t
+		}
+	}
+	
+	return setting
 }
