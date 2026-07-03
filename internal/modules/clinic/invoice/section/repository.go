@@ -299,7 +299,7 @@ func (r *Repository) ListByInvoiceID(ctx context.Context, invoiceID uuid.UUID) (
 	query := `
 		SELECT 
 			id, invoice_id, invoice_section, document_number, tax_method,
-			payment_method, account_name, bsb_number, account_number, payment_date::text, payment_reference,
+			payment_method, account_name, bsb, account_number, payment_date::text, payment_reference,
 			parent_section_id, created_at, updated_at
 		FROM tbl_map_invoice_section
 		WHERE invoice_id = $1 AND deleted_at IS NULL
@@ -539,7 +539,7 @@ func (r *Repository) updateSection(ctx context.Context, tx *sqlx.Tx, section Sec
 			invoice_section = $3,
 			payment_method = $4,
 			account_name = $5,
-			bsb_number = $6,
+			bsb = $6,
 			account_number = $7,
 			payment_date = $8,
 			payment_reference = $9,
