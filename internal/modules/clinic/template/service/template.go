@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/base64"
+	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/template"
@@ -128,7 +129,38 @@ func (s *Template) Delete(ctx context.Context, id uuid.UUID) error {
 }
 
 func (s *Template) List(ctx context.Context, method string) (*util.RsList, error) {
-	return s.repo.List(ctx, method)
+	rsList, err := s.repo.List(ctx, method)
+	if err != nil {
+		return nil, err
+	}
+
+	if items, ok := rsList.Items.([]map[string]interface{}); ok {
+		for i := range items {
+			htmlEncoded, okHtml := items[i]["html"].(string)
+			cssEncoded, okCss := items[i]["css"].(string)
+
+			if okHtml && okCss {
+				htmlBlob, err := base64.StdEncoding.DecodeString(htmlEncoded)
+				if err != nil {
+					return nil, fmt.Errorf("failed to decode html for template: %w", err)
+				}
+				cssBlob, err := base64.StdEncoding.DecodeString(cssEncoded)
+				if err != nil {
+					return nil, fmt.Errorf("failed to decode css for template: %w", err)
+				}
+
+				html, css, err := s.encryption.DecryptTemplate(htmlBlob, cssBlob)
+				if err != nil {
+					return nil, fmt.Errorf("failed to decrypt template: %w", err)
+				}
+
+				items[i]["html"] = base64.StdEncoding.EncodeToString([]byte(html))
+				items[i]["css"] = base64.StdEncoding.EncodeToString([]byte(css))
+			}
+		}
+	}
+
+	return rsList, nil
 }
 
 func (s *Template) BulkCreate(ctx context.Context) (*[]common.RsTemplate, error) {

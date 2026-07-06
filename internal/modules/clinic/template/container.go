@@ -73,7 +73,3 @@ func (c *Container) Handler() IHandler {
 	})
 	return c.handler
 }
-
-func (c *Container) Config() *config.Config {
-	return c.cfg
-}

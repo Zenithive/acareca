@@ -36,17 +36,31 @@ func (s *Sync) BulkSyncDefaults(ctx context.Context) error {
 	}
 
 	// Build map of existing templates by name
-	existingMap := make(map[string]template.RsTemplate)
+	existingMap := make(map[string]uuid.UUID)
 	if existingList != nil && existingList.Items != nil {
 		switch items := existingList.Items.(type) {
+		case []map[string]interface{}:
+			for _, item := range items {
+				if name, ok := item["name"].(string); ok {
+					if id, ok := item["id"].(uuid.UUID); ok {
+						existingMap[name] = id
+					}
+				}
+			}
 		case []template.RsTemplate:
 			for _, item := range items {
-				existingMap[item.Name] = item
+				existingMap[item.Name] = item.Id
 			}
 		case []interface{}:
 			for _, v := range items {
-				if item, ok := v.(template.RsTemplate); ok {
-					existingMap[item.Name] = item
+				if itemMap, ok := v.(map[string]interface{}); ok {
+					if name, ok := itemMap["name"].(string); ok {
+						if id, ok := itemMap["id"].(uuid.UUID); ok {
+							existingMap[name] = id
+						}
+					}
+				} else if item, ok := v.(template.RsTemplate); ok {
+					existingMap[item.Name] = item.Id
 				}
 			}
 		default:
@@ -64,10 +78,10 @@ func (s *Sync) BulkSyncDefaults(ctx context.Context) error {
 			return err
 		}
 
-		if existingMatched, exists := existingMap[freshRq.Name]; exists {
+		if existingId, exists := existingMap[freshRq.Name]; exists {
 			// Update existing template
 			t := common.Template{
-				Id:        existingMatched.Id,
+				Id:        existingId,
 				Name:      freshRq.Name,
 				Html:      htmlBlob,
 				Css:       cssBlob,
