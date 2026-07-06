@@ -300,6 +300,7 @@ func (i *Invoice) ToRsInvoice() *RsInvoice {
 		DueDate:           i.DueDate,
 		Status:            i.Status,
 		Sections:          rsSection,
+		InvoiceMethod:     i.InvoiceMethod,
 		CreatedAt:         i.CreatedAt,
 		UpdatedAt:         i.UpdatedAt,
 	}
@@ -341,11 +342,12 @@ type RsInvoice struct {
 }
 
 type Filter struct {
-	Name      *string    `form:"name,omitempty"`
-	Status    *string    `form:"status,omitempty"`
-	ContactID *string    `form:"contact_id,omitempty"`
-	IssueDate *string    `form:"date_range,omitempty"`
-	ClinicId  *uuid.UUID `form:"-"`
+	Name          *string    `form:"name,omitempty"`
+	Status        *string    `form:"status,omitempty"`
+	ContactID     *string    `form:"contact_id,omitempty"`
+	IssueDate     *string    `form:"date_range,omitempty"`
+	ClinicId      *uuid.UUID `form:"-"`
+	InvoiceMethod *string    `form:"invoice_method,validate:omitempty,oneof=SFA_CLINIC_COLLECTS SFA_DENTIST_COLLECTS INDEPENDENT_CONTRACTOR"`
 	common.Filter
 }
 
@@ -416,6 +418,11 @@ func (filter *Filter) MapToFilter() common.Filter {
 			filters["date_range_end"] = lastDayOfLastMonth.Format("2006-01-02")
 			operators["date_range_end"] = common.OpLte
 		}
+	}
+
+	if filter.InvoiceMethod != nil {
+		filters["invoice_method"] = *filter.InvoiceMethod
+		operators["invoice_method"] = common.OpEq
 	}
 
 	return common.NewFilter(filter.Search, filters, operators, filter.Limit, filter.Offset, filter.SortBy, filter.OrderBy)

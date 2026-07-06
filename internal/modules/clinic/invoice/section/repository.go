@@ -294,7 +294,6 @@ func (r *Repository) ListByInvoiceID(ctx context.Context, invoiceID uuid.UUID) (
 	defer rows.Close()
 
 	allSections := make(map[uuid.UUID]*Section)
-	var topLevelSections []Section
 
 	for rows.Next() {
 		section := &Section{}
@@ -317,10 +316,6 @@ func (r *Repository) ListByInvoiceID(ctx context.Context, invoiceID uuid.UUID) (
 		section.Entries = make([]*item.Item, 0)
 		section.Sections = make([]*Section, 0)
 		allSections[section.ID] = section
-
-		if section.ParentSectionID == nil {
-			topLevelSections = append(topLevelSections, *section)
-		}
 	}
 
 	if err := rows.Err(); err != nil {
@@ -360,12 +355,20 @@ func (r *Repository) ListByInvoiceID(ctx context.Context, invoiceID uuid.UUID) (
 		}
 	}
 
-	// Assign top-level items to their sections
+	// Map items directly to their section structures
 	for _, itm := range items {
-		if itm.InvoiceSectionID != nil && itm.ParentID == nil { // Only top-level items
+		if itm.InvoiceSectionID != nil && itm.ParentID == nil {
 			if section, ok := allSections[*itm.InvoiceSectionID]; ok {
 				section.Entries = append(section.Entries, itm)
 			}
+		}
+	}
+
+	// Build response using the fully updated pointer map references
+	var topLevelSections []Section
+	for _, section := range allSections {
+		if section.ParentSectionID == nil {
+			topLevelSections = append(topLevelSections, *section)
 		}
 	}
 
