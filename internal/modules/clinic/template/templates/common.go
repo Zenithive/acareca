@@ -32,11 +32,11 @@ func DefaultPreparedForBanner() string {
 // TaxInvoiceBillToBanner returns the address banner for Tax Invoice with RCTI support
 func TaxInvoiceBillToBanner() string {
 	return AddressBanner(AddressBannerConfig{
-		Label:        "{{billing_method.bill_to_label}}",
+		Label:        "BILL TO",
 		NameField:    "bill_to.name",
 		AddressField: "bill_to.address",
 		ABNField:     "bill_to.abn",
-		ExtraHTML:    `{{#if billing_method.show_rcti_note}}<p class="recipient-line" style="margin-top: 4px; font-size: 10px; font-style: italic;">Recipient: {{bill_from.name}} ABN {{bill_from.abn}}<br>Issued by the recipient under an RCTI agreement between the parties.</p>{{/if}}`,
+		ExtraHTML:    `{{#if billing_method.show_rcti_note}}<p class="recipient-line" style="margin-top: 4px; font-size: 10px; font-style: italic; color: gray !important">Recipient: {{bill_from.name}} • ABN {{bill_from.abn}}<br>Issued by the recipient under an RCTI agreement between the parties.</p>{{/if}}`,
 	})
 }
 
@@ -53,7 +53,7 @@ func RemittancePayeeBanner() string {
 // FooterNotesSection returns the footer notes section HTML
 func FooterNotesSection(noteContent string) string {
 	return `<div class="footer-notes-box">
-    <p style="font-style: italic; margin-bottom: 4px;{{#if footer_note}} font-style: normal;{{/if}}"><strong>Notes:</strong> ` + noteContent + `</p>
+    <p style="font-style: italic; margin-top: 4px; font-weight: normal; color: var(--text-dark);"><strong>Notes:</strong> ` + noteContent + `</p>
   </div>`
 }
 
@@ -119,7 +119,7 @@ func RemittancePaymentDetailsTable() string {
 
 // TaxSummarySection returns the tax summary table HTML
 func TaxSummarySection() string {
-	return `<table class="layout-table" style="font-size: 11px; line-height: 1.6;">
+	return `<table class="layout-table" style="font-size: 11px; line-height: 1.6; margin-left: auto; width: 100%%;">
           <tr>
             <td style="padding: 3px 6px; text-align: left;">Subtotal (excl. GST)</td>
             <td class="num" style="padding: 3px 6px;">{{format_currency subtotal}}</td>
@@ -179,7 +179,7 @@ type TableColumn struct {
 	Header    string
 	Width     string
 	Align     string // left, right, center
-	FieldType string // text, amount, bas_code
+	FieldType string // text, amount, bas_code, paid_by
 }
 
 // DataTable generates a standardized data table HTML structure
@@ -220,6 +220,9 @@ func DataTable(cfg TableConfig) string {
 		case "bas_code":
 			cellClass = ` class="center"`
 			cellContent = `{{bas_code}}`
+		case "paid_by":
+			cellClass = ` class="center" style="text-transform: uppercase;"`
+			cellContent = `{{paid_by}}`
 		default:
 			cellContent = `{{label}}`
 		}
@@ -240,6 +243,11 @@ func DataTable(cfg TableConfig) string {
 // Header returns the shared document header markup, parameterized by
 // title, the invoice-number label, and the address banner block.
 func Header(title, labelName, addressBannerHTML string) string {
+	titleHTML := title
+	if title == "RECIPIENT CREATED TAX INVOICE" {
+		titleHTML = `RCTI<br><span style="font-size: 12px; letter-spacing: 0.2px; font-weight: normal; font-style: italic; text-transform: none; color: gray; display: block; margin-top: 2px;">Recipient Created Tax Invoice</span>`
+	}
+
 	return `<table class="layout-table" style="margin-bottom: 2px; width: 100%; border-collapse: collapse;">
   <tr>
     <td style="width: 55%; vertical-align: top; padding: 0;">
@@ -255,6 +263,8 @@ func Header(title, labelName, addressBannerHTML string) string {
         <h2 class="hdr-clinic-name">{{bill_from.name}}</h2>
         {{#if bill_from.address}}
         <p class="hdr-clinic-line">{{bill_from.address}}</p>
+        {{else if address}}
+        <p class="hdr-clinic-line">{{address}}</p>
         {{/if}}
         <p class="hdr-clinic-contact">
           {{#if bill_from.abn}}ABN {{bill_from.abn}}{{/if}}{{#if bill_from.phone}} &nbsp;|&nbsp; Ph {{bill_from.phone}}{{/if}}{{#if bill_from.email}} &nbsp;|&nbsp; {{bill_from.email}}{{/if}}
@@ -264,7 +274,7 @@ func Header(title, labelName, addressBannerHTML string) string {
       ` + addressBannerHTML + `
     </td>
     <td style="width: 45%; vertical-align: top; text-align: right; padding: 0;">
-      <h1 class="hdr-doc-title">` + title + `</h1>
+      <h1 class="hdr-doc-title" style="line-height: 1.2;">` + titleHTML + `</h1>
       <table class="hdr-meta" style="margin-left: auto; width: 100%; max-width: 240px; border-collapse: collapse;">
         <tbody>
           <tr>

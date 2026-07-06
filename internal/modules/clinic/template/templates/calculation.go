@@ -11,7 +11,7 @@ func ServiceFeeIntroRowCalculation() string {
               <td style="padding: 0; color: black; width: 65%%; vertical-align: middle;">
                 {{service_fee_rate_intro.label}}
                 <span style="float: right; font-weight: bold; white-space: nowrap; margin-left: 8px;">
-                  {{billing_method.rate_label}}&nbsp;
+                  {{#if is_method_c}}Commission rate{{else}}{{#if billing_method.rate_label}}{{billing_method.rate_label}}{{else}}Fee rate{{/if}}{{/if}}&nbsp;
                   <span class="txt-blue-val">{{service_fee_rate_intro.fee_rate_display}}</span>
                 </span>
               </td>
@@ -19,7 +19,7 @@ func ServiceFeeIntroRowCalculation() string {
               <td style="width: 15%%; padding: 0;"></td>
             </tr>
           </table>
-          {{#if billing_method.show_service_description}}
+          {{#unless is_method_c}}
             {{#if service_description_items}}
             <ol style="margin: 6px 0 0 18px; padding: 0; list-style-type: decimal; font-size: 11px; line-height: 1.5; color: var(--text-dark);">
               {{#each service_description_items}}
@@ -27,30 +27,36 @@ func ServiceFeeIntroRowCalculation() string {
               {{/each}}
             </ol>
             {{/if}}
-          {{/if}}
+          {{/unless}}
         </td>
       </tr>`
 }
 
 // CalculationHTML returns the HTML body for the default Calculation Statement.
 func CalculationHTML() string {
-	// Build patient fees table
 	patientFeesTable := DataTable(TableConfig{
-		Title:         "{{billing_method.patient_fees_label}}",
 		ItemsVariable: "patient_fee_items",
 		Columns: []TableColumn{
-			{Header: "{{billing_method.patient_fees_label}}", Width: "65%", Align: "left", FieldType: "text"},
+			{Header: "1. PATIENT FEES", Width: "65%", Align: "left", FieldType: "text"},
 			{Header: "Amount", Width: "20%", Align: "right", FieldType: "amount"},
 			{Header: "BAS Code", Width: "15%", Align: "center", FieldType: "bas_code"},
 		},
 	})
 
-	// Build settlement table
-	settlementTable := DataTable(TableConfig{
-		Title:         "3. NET SETTLEMENT",
-		ItemsVariable: "settlement_items",
+	treatmentCostsTable := DataTable(TableConfig{
+		ItemsVariable: "treatment_cost_items",
 		Columns: []TableColumn{
-			{Header: "3. NET SETTLEMENT", Width: "65%", Align: "left", FieldType: "text"},
+			{Header: "2. TREATMENT COSTS", Width: "50%", Align: "left", FieldType: "text"},
+			{Header: "Paid By", Width: "20%", Align: "center", FieldType: "paid_by"},
+			{Header: "Amount", Width: "15%", Align: "right", FieldType: "amount"},
+			{Header: "BAS Code", Width: "15%", Align: "center", FieldType: "bas_code"},
+		},
+	})
+
+	netPatientFeesTable := DataTable(TableConfig{
+		ItemsVariable: "net_patient_fee_items",
+		Columns: []TableColumn{
+			{Header: "3. NET PATIENT FEES", Width: "65%", Align: "left", FieldType: "text"},
 			{Header: "Amount", Width: "20%", Align: "right", FieldType: "amount"},
 			{Header: "BAS Code", Width: "15%", Align: "center", FieldType: "bas_code"},
 		},
@@ -62,10 +68,12 @@ func CalculationHTML() string {
 
   %s
 
+  %s
+
   <table class="data-table">
     <thead>
       <tr>
-        <th style="width: 65%%; text-align: left;">{{billing_method.service_fee_section_label}}</th>
+        <th style="width: 65%%; text-align: left;">{{#if billing_method.service_fee_section_label}}{{billing_method.service_fee_section_label}}{{else}}4. SERVICE &amp; FACILITY FEE{{/if}}</th>
         <th style="width: 20%%; text-align: right;">Amount</th>
         <th style="width: 15%%; text-align: center;">BAS Code</th>
       </tr>
@@ -82,8 +90,20 @@ func CalculationHTML() string {
     </tbody>
   </table>
 
-  %s
-
-  %s
-</div>`, CalculationStatementHeader(DefaultPreparedForBanner()), patientFeesTable, ServiceFeeIntroRowCalculation(), settlementTable, FooterNotesSection("{{footer_note}}"), PaymentDetailsSection())
+  <div class="footer-notes-box">
+    {{#if notes}}
+    <p style="margin-top: 4px; font-weight: normal; color: var(--text-dark);"><strong>Notes:</strong> {{notes}}</p>
+    {{else}}
+      {{#if template_settings.terms_text}}
+      <p style="margin-top: 4px; font-weight: normal; color: var(--text-dark);"><strong>Notes:</strong> {{template_settings.terms_text}}</p>
+      {{else}}
+        {{#if footer_note}}
+        <p style="margin-top: 4px; font-weight: normal; color: var(--text-dark);"><strong>Notes:</strong> {{footer_note}}</p>
+        {{else}}
+        <p style="font-style: italic; margin-bottom: 4px;">Notes: Total patient fees, GST collected (1A) and laboratory fees are sourced from the practice management system for the billing period. Highlighted rows indicate data input variables; all other figures are calculated. BAS codes are shown for the clinic's activity statement.</p>
+        {{/if}}
+      {{/if}}
+    {{/if}}
+  </div>
+</div>`, CalculationStatementHeader(DefaultPreparedForBanner()), patientFeesTable, treatmentCostsTable, netPatientFeesTable, ServiceFeeIntroRowCalculation())
 }

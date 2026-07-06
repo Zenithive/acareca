@@ -26,6 +26,13 @@ func DefaultTemplates() []RqGlobalTemplate {
 			Css:       css,
 		},
 		{
+			Name:      "Recipient Created Tax Invoice",
+			IsDefault: false,
+			IsActive:  true,
+			Html:      templates.RCTIHTML(),
+			Css:       css,
+		},
+		{
 			Name:      "Remittance Advice",
 			IsDefault: false,
 			IsActive:  true,
