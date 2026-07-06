@@ -283,15 +283,6 @@ func (s *Service) ResendInvoiceEmail(ctx context.Context, id uuid.UUID) error {
 
 func (s *Service) compileInvoicePDF(ctx context.Context, inv *RsInvoice) (string, error) {
 	templateIDs := make([]uuid.UUID, 0, len(inv.Sections))
-	for _, sec := range inv.Sections {
-		if sec.TemplateID != uuid.Nil {
-			templateIDs = append(templateIDs, sec.TemplateID)
-		}
-	}
-
-	if len(templateIDs) == 0 {
-		return "", errors.New("invoice has no template configured")
-	}
 
 	pdfBytes, _, err := s.tplService.DownloadPDF(ctx, inv.ClinicID, templateIDs, inv.ID)
 	if err != nil {

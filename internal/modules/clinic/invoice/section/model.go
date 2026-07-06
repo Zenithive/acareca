@@ -30,7 +30,6 @@ const (
 // RqSection represents the request payload for creating a section
 type RqSection struct {
 	InvoiceID        *uuid.UUID      `json:"invoiceId,omitempty"`
-	TemplateID       uuid.UUID       `json:"templateId,omitempty"`
 	SectionType      SectionType     `json:"sectionType" `
 	DocumentNumber   string          `json:"documentNumber"`
 	TaxMethod        *TaxMethod      `json:"taxMethod,omitempty" validate:"omitempty,oneof=INCLUSIVE EXCLUSIVE NO_TAX"`
@@ -45,7 +44,6 @@ type RqSection struct {
 type RqUpdateSection struct {
 	ID               *uuid.UUID            `json:"id,omitempty"`
 	InvoiceID        *uuid.UUID            `json:"invoiceId,omitempty"`
-	TemplateID       *uuid.UUID            `json:"templateId,omitempty"`
 	SectionType      *SectionType          `json:"SectionType,omitempty"`
 	DocumentNumber   *string               `json:"documentNumber,omitempty"`
 	TaxMethod        *TaxMethod            `json:"taxMethod,omitempty" validate:"omitempty,oneof=INCLUSIVE EXCLUSIVE NO_TAX"`
@@ -72,15 +70,9 @@ func (rq *RqSection) ToSection() *Section {
 		sections = append(sections, childSection)
 	}
 
-	var templateID *uuid.UUID
-	if rq.TemplateID != uuid.Nil {
-		templateID = &rq.TemplateID
-	}
-
 	return &Section{
 		ID:               sectionID,
 		InvoiceID:        rq.InvoiceID,
-		TemplateID:       templateID,
 		InvoiceSection:   &rq.SectionType,
 		DocumentNumber:   rq.DocumentNumber,
 		TaxMethod:        rq.TaxMethod,
@@ -104,10 +96,6 @@ func (rq *RqUpdateSection) ToSection() *Section {
 
 	if rq.InvoiceID != nil {
 		section.InvoiceID = rq.InvoiceID
-	}
-
-	if rq.TemplateID != nil {
-		section.TemplateID = rq.TemplateID
 	}
 
 	if rq.SectionType != nil {
@@ -171,7 +159,6 @@ func (rq *RqUpdateSection) ToSection() *Section {
 type Section struct {
 	ID               uuid.UUID    `db:"id"`
 	InvoiceID        *uuid.UUID   `db:"invoice_id"`
-	TemplateID       *uuid.UUID   `db:"template_id"`
 	InvoiceSection   *SectionType `db:"invoice_section"`
 	DocumentNumber   string       `db:"document_number"`
 	TaxMethod        *TaxMethod   `db:"tax_method"`
@@ -197,11 +184,6 @@ func (s *Section) ToRsSection() *RsSection {
 		rsSections = append(rsSections, childSec.ToRsSection())
 	}
 
-	var templateID uuid.UUID
-	if s.TemplateID != nil {
-		templateID = *s.TemplateID
-	}
-
 	var sectionType SectionType
 	if s.InvoiceSection != nil {
 		sectionType = *s.InvoiceSection
@@ -210,7 +192,6 @@ func (s *Section) ToRsSection() *RsSection {
 	return &RsSection{
 		ID:               s.ID,
 		InvoiceID:        s.InvoiceID,
-		TemplateID:       templateID,
 		SectionType:      sectionType,
 		DocumentNumber:   s.DocumentNumber,
 		TaxMethod:        s.TaxMethod,
@@ -228,7 +209,6 @@ func (s *Section) ToRsSection() *RsSection {
 type RsSection struct {
 	ID               uuid.UUID       `json:"id"`
 	InvoiceID        *uuid.UUID      `json:"invoiceId"`
-	TemplateID       uuid.UUID       `json:"templateId,omitempty"`
 	SectionType      SectionType     `json:"sectionType"`
 	DocumentNumber   string          `json:"documentNumber"`
 	TaxMethod        *TaxMethod      `json:"taxMethod,omitempty"`

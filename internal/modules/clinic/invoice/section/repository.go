@@ -74,7 +74,6 @@ func (r *Repository) createSectionRecursive(ctx context.Context, tx *sqlx.Tx, in
 		query,
 		section.ID,
 		section.InvoiceID,
-		section.TemplateID,
 		section.InvoiceSection,
 		section.DocumentNumber,
 		section.TaxMethod,
@@ -242,7 +241,6 @@ func (r *Repository) GetByID(ctx context.Context, invoiceID, sectionID uuid.UUID
 	err := r.db.QueryRowContext(ctx, query, invoiceID, sectionID).Scan(
 		&section.ID,
 		&section.InvoiceID,
-		&section.TemplateID,
 		&section.InvoiceSection,
 		&section.DocumentNumber,
 		&section.TaxMethod,
@@ -296,7 +294,6 @@ func (r *Repository) ListByInvoiceID(ctx context.Context, invoiceID uuid.UUID) (
 	defer rows.Close()
 
 	allSections := make(map[uuid.UUID]*Section)
-	var topLevelSections []Section
 
 	for rows.Next() {
 		section := &Section{}
@@ -319,10 +316,6 @@ func (r *Repository) ListByInvoiceID(ctx context.Context, invoiceID uuid.UUID) (
 		section.Entries = make([]*item.Item, 0)
 		section.Sections = make([]*Section, 0)
 		allSections[section.ID] = section
-
-		if section.ParentSectionID == nil {
-			topLevelSections = append(topLevelSections, *section)
-		}
 	}
 
 	if err := rows.Err(); err != nil {
@@ -362,12 +355,20 @@ func (r *Repository) ListByInvoiceID(ctx context.Context, invoiceID uuid.UUID) (
 		}
 	}
 
-	// Assign top-level items to their sections
+	// Map items directly to their section structures
 	for _, itm := range items {
-		if itm.InvoiceSectionID != nil && itm.ParentID == nil { // Only top-level items
+		if itm.InvoiceSectionID != nil && itm.ParentID == nil {
 			if section, ok := allSections[*itm.InvoiceSectionID]; ok {
 				section.Entries = append(section.Entries, itm)
 			}
+		}
+	}
+
+	// Build response using the fully updated pointer map references
+	var topLevelSections []Section
+	for _, section := range allSections {
+		if section.ParentSectionID == nil {
+			topLevelSections = append(topLevelSections, *section)
 		}
 	}
 
@@ -393,7 +394,6 @@ func (r *Repository) GetByType(ctx context.Context, invoiceID uuid.UUID, section
 	err := r.db.QueryRowContext(ctx, query, invoiceID, sectionType).Scan(
 		&section.ID,
 		&section.InvoiceID,
-		&section.TemplateID,
 		&section.InvoiceSection,
 		&section.DocumentNumber,
 		&section.TaxMethod,
@@ -454,7 +454,7 @@ func (r *Repository) UpsertSections(ctx context.Context, tx *sqlx.Tx, invoiceID 
 		} else {
 			var dbSection Section
 			err := tx.QueryRowxContext(ctx, `
-				SELECT id, invoice_section, invoice_id, template_id FROM tbl_map_invoice_section WHERE id = $1 AND deleted_at IS NULL
+				SELECT id, invoice_section, invoice_id FROM tbl_map_invoice_section WHERE id = $1 AND deleted_at IS NULL
 			`, section.ID).StructScan(&dbSection)
 
 			if err == nil {
