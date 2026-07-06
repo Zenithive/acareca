@@ -303,7 +303,6 @@ func (r *Repository) ListByInvoiceID(ctx context.Context, invoiceID uuid.UUID) (
 		err := rows.Scan(
 			&section.ID,
 			&section.InvoiceID,
-			&section.TemplateID,
 			&section.InvoiceSection,
 			&section.DocumentNumber,
 			&section.TaxMethod,
