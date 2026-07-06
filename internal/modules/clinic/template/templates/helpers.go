@@ -10,4 +10,15 @@ Handlebars.registerHelper('coalesce', function (...args) {
   const values = args.slice(0, -1); // drop trailing Handlebars options object
   return values.find(v => v !== undefined && v !== null && v !== '') || '';
 });
+
+Handlebars.registerHelper('format_currency', function (amount) {
+  return '$' + Math.abs(amount).toFixed(2);
+});
+
+Handlebars.registerHelper('format_table_amount', function (row) {
+  if (!row || typeof row !== 'object') return '';
+  const amount = parseFloat(row.amount) || 0;
+  const formatted = '$' + Math.abs(amount).toFixed(2);
+  return row.is_negative ? '(' + formatted + ')' : formatted;
+});
 `
