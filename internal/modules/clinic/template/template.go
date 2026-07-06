@@ -8,6 +8,11 @@ import (
 
 // defaultTemplateHeader takes custom settings into account dynamically via Handlebars tags
 func defaultTemplateHeader(title string, labelName string, addressBannerHTML string) string {
+	titleHTML := title
+	if title == "RECIPIENT CREATED TAX INVOICE" {
+		titleHTML = `RCTI<br><span style="font-size: 12px; letter-spacing: 0.2px; font-weight: normal; font-style: italic; text-transform: none; color: gray; display: block; margin-top: 2px;">Recipient Created Tax Invoice</span>`
+	}
+
 	return `<table class="layout-table" style="margin-bottom: 2px; width: 100%; border-collapse: collapse;">
   <tr>
     <td style="width: 55%; vertical-align: top; padding: 0;">
@@ -23,6 +28,8 @@ func defaultTemplateHeader(title string, labelName string, addressBannerHTML str
         <h2 class="hdr-clinic-name">{{bill_from.name}}</h2>
         {{#if bill_from.address}}
         <p class="hdr-clinic-line">{{bill_from.address}}</p>
+        {{else if address}}
+        <p class="hdr-clinic-line">{{address}}</p>
         {{/if}}
         <p class="hdr-clinic-contact">
           {{#if bill_from.abn}}ABN {{bill_from.abn}}{{/if}}{{#if bill_from.phone}} &nbsp;|&nbsp; Ph {{bill_from.phone}}{{/if}}{{#if bill_from.email}} &nbsp;|&nbsp; {{bill_from.email}}{{/if}}
@@ -32,7 +39,7 @@ func defaultTemplateHeader(title string, labelName string, addressBannerHTML str
       ` + addressBannerHTML + `
     </td>
     <td style="width: 45%; vertical-align: top; text-align: right; padding: 0;">
-      <h1 class="hdr-doc-title">` + title + `</h1>
+      <h1 class="hdr-doc-title" style="line-height: 1.2;">` + titleHTML + `</h1>
       <table class="hdr-meta" style="margin-left: auto; width: 100%; max-width: 240px; border-collapse: collapse;">
         <tbody>
           <tr>
@@ -326,10 +333,10 @@ body .payment-details-table-striped tr:nth-child(even) {
 }
 
 func DefaultTemplates() []RqGlobalTemplate {
-	calculationPreparedFor := `<div class="address-banner-box"><div class="banner-label">PREPARED FOR</div><div class="recipient-name">{{bill_to.name}}</div>{{#if bill_to.address}}<p class="recipient-line">{{bill_to.address}}</p>{{/if}}{{#if bill_to.abn}}<p class="recipient-line">ABN {{bill_to.abn}}</p>{{/if}}</div>`
-	taxInvoiceBillTo := `<div class="address-banner-box"><div class="banner-label">BILL TO</div><div class="recipient-name">{{bill_to.name}}</div>{{#if bill_to.address}}<p class="recipient-line">{{bill_to.address}}</p>{{/if}}{{#if bill_to.abn}}<p class="recipient-line">ABN {{bill_to.abn}}</p>{{/if}}</div>`
-	rctiSupplier := `<div class="address-banner-box"><div class="banner-label">SUPPLIER (DENTIST)</div><div class="recipient-name">{{bill_to.name}}</div>{{#if bill_to.address}}<p class="recipient-line">{{bill_to.address}}</p>{{/if}}{{#if bill_to.abn}}<p class="recipient-line">ABN {{bill_to.abn}}</p>{{/if}}<p class="recipient-line" style="margin-top: 4px; font-size: 10px; font-style: italic;">Recipient: {{bill_from.name}} ABN {{bill_from.abn}}<br>Issued by the recipient under an RCTI agreement between the parties.</p></div>`
-	remittancePayee := `<div class="address-banner-box"><div class="banner-label">PAYEE</div><div class="recipient-name">{{bill_to.name}}</div>{{#if bill_to.address}}<p class="recipient-line">{{bill_to.address}}</p>{{/if}}{{#if bill_to.abn}}<p class="recipient-line">ABN {{bill_to.abn}}</p>{{/if}}</div>`
+	calculationPreparedFor := `<div class="address-banner-box"><div class="banner-label">PREPARED FOR</div><div class="recipient-name">{{bill_to.name}}</div>{{#if bill_to.address}}<p class="recipient-line">{{bill_to.address}}</p>{{else if address}}<p class="recipient-line">{{address}}</p>{{/if}}{{#if bill_to.abn}}<p class="recipient-line">ABN {{bill_to.abn}}</p>{{/if}}</div>`
+	taxInvoiceBillTo := `<div class="address-banner-box"><div class="banner-label">BILL TO</div><div class="recipient-name">{{bill_to.name}}</div>{{#if bill_to.address}}<p class="recipient-line">{{bill_to.address}}</p>{{else if address}}<p class="recipient-line">{{address}}</p>{{/if}}{{#if bill_to.abn}}<p class="recipient-line">ABN {{bill_to.abn}}</p>{{/if}}</div>`
+	rctiSupplier := `<div class="address-banner-box"><div class="banner-label">SUPPLIER (DENTIST)</div><div class="recipient-name">{{bill_to.name}}</div>{{#if bill_to.address}}<p class="recipient-line">{{bill_to.address}}</p>{{else if address}}<p class="recipient-line">{{address}}</p>{{/if}}{{#if bill_to.abn}}<p class="recipient-line">ABN {{bill_to.abn}}</p>{{/if}}<p class="recipient-line" style="margin-top: 4px; font-size: 10px; font-style: italic; color: gray !important">Recipient: {{bill_from.name}} • ABN {{bill_from.abn}}<br>Issued by the recipient under an RCTI agreement between the parties.</p></div>`
+	remittancePayee := `<div class="address-banner-box"><div class="banner-label">PAYEE</div><div class="recipient-name">{{bill_to.name}}</div>{{#if bill_to.address}}<p class="recipient-line">{{bill_to.address}}</p>{{else if address}}<p class="recipient-line">{{address}}</p>{{/if}}{{#if bill_to.abn}}<p class="recipient-line">ABN {{bill_to.abn}}</p>{{/if}}</div>`
 
 	return []RqGlobalTemplate{
 		{
@@ -615,47 +622,42 @@ func DefaultTemplates() []RqGlobalTemplate {
     </tbody>
   </table>
 
-  <table class="layout-table" style="margin-top: 4px;">
-    <tr>
-      <td style="width: 50%%; vertical-align: top; padding: 0;">
-        <div class="payment-details-container" style="margin-top: 0px;">
-          <div class="payment-details-header">PAYMENT DETAILS - PAY TO DENTIST</div>
-          <table class="payment-details-table payment-details-table-bordered" style="width: 100%%; border-collapse: collapse;">
-            <tbody>
-              <tr>
-                <td style="font-weight: bold; width: 40%%;">Account</td>
-                <td style="width: 60%%;">{{bill_to.name}}</td>
-              </tr>
-              <tr>
-                <td style="font-weight: bold;">BSB / Acc No.</td>
-                <td>{{#if dentist_payment_details.bsb}}{{dentist_payment_details.bsb}} / {{dentist_payment_details.account}}{{else}}063-000 / 12345678{{/if}}</td>
-              </tr>
-              <tr>
-                <td style="font-weight: bold;">Reference</td>
-                <td>{{invoice_number}}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </td>
-      <td style="width: 50%%; padding: 0; vertical-align: top;">
-        <table class="layout-table" style="font-size: 11px; line-height: 1.6; margin-left: auto; width: 100%%;">
-          <tr>
-            <td style="padding: 3px 6px; text-align: left;">Subtotal (excl. GST)</td>
-            <td class="num" style="padding: 3px 6px;">{{format_currency subtotal}}</td>
-          </tr>
-          <tr>
-            <td style="padding: 3px 6px; text-align: left;">GST (10%%)</td>
-            <td class="num" style="padding: 3px 6px;">{{format_currency tax_total}}</td>
-          </tr>
-          <tr style="font-weight: bold; background-color: rgb(from var(--accent-color) r g b / 0.45) !important;">
-            <td style="padding: 5px 6px; border-top: 1px solid var(--primary-color) !important; border-bottom: 2px solid var(--primary-color) !important; text-align: left;">TOTAL (incl. GST)</td>
-            <td class="num" style="padding: 5px 6px; border-top: 1px solid var(--primary-color) !important; border-bottom: 2px solid var(--primary-color) !important;">{{format_currency grand_total}}</td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
+  <div style="width: 100%%; display: block; margin-top: 4px;">
+    <table class="layout-table" style="font-size: 11px; line-height: 1.6; margin-left: auto; width: 50%%;">
+      <tr>
+        <td style="padding: 3px 6px; text-align: left;">Subtotal (excl. GST)</td>
+        <td class="num" style="padding: 3px 6px;">{{format_currency subtotal}}</td>
+      </tr>
+      <tr>
+        <td style="padding: 3px 6px; text-align: left;">GST (10%%)</td>
+        <td class="num" style="padding: 3px 6px;">{{format_currency tax_total}}</td>
+      </tr>
+      <tr style="font-weight: bold; background-color: rgb(from var(--accent-color) r g b / 0.45) !important;">
+        <td style="padding: 5px 6px; border-top: 1px solid var(--primary-color) !important; border-bottom: 2px solid var(--primary-color) !important; text-align: left;">TOTAL (incl. GST)</td>
+        <td class="num" style="padding: 5px 6px; border-top: 1px solid var(--primary-color) !important; border-bottom: 2px solid var(--primary-color) !important;">{{format_currency grand_total}}</td>
+      </tr>
+    </table>
+  </div>
+
+  <div class="payment-details-container">
+    <div class="payment-details-header">PAYMENT DETAILS - PAY TO DENTIST</div>
+    <table class="payment-details-table{{#if table_style_bordered}} payment-details-table-bordered{{/if}}{{#if table_style_striped}} payment-details-table-striped{{/if}}">
+      <tbody>
+        <tr>
+          <td style="font-weight: bold; width: 45%%;">Account</td>
+          <td style="width: 55%%;">{{bill_to.name}}</td>
+        </tr>
+        <tr>
+          <td style="font-weight: bold;">BSB / Acc No.</td>
+          <td>{{#if dentist_payment_details.bsb}}{{dentist_payment_details.bsb}} / {{dentist_payment_details.account}}{{else}}063-000 / 12345678{{/if}}</td>
+        </tr>
+        <tr>
+          <td style="font-weight: bold;">Reference</td>
+          <td>{{invoice_number}}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
 
   <div class="footer-notes-box" style="margin-top: 24px;">
     <p style="font-style: italic; margin-bottom: 4px;">
