@@ -30,7 +30,6 @@ const (
 // RqSection represents the request payload for creating a section
 type RqSection struct {
 	InvoiceID        *uuid.UUID      `json:"invoiceId,omitempty"`
-	TemplateID       uuid.UUID       `json:"templateId,omitempty"`
 	SectionType      SectionType     `json:"sectionType" `
 	DocumentNumber   string          `json:"documentNumber"`
 	TaxMethod        *TaxMethod      `json:"taxMethod,omitempty" validate:"omitempty,oneof=INCLUSIVE EXCLUSIVE NO_TAX"`
@@ -45,7 +44,6 @@ type RqSection struct {
 type RqUpdateSection struct {
 	ID               *uuid.UUID            `json:"id,omitempty"`
 	InvoiceID        *uuid.UUID            `json:"invoiceId,omitempty"`
-	TemplateID       *uuid.UUID            `json:"templateId,omitempty"`
 	SectionType      *SectionType          `json:"SectionType,omitempty"`
 	DocumentNumber   *string               `json:"documentNumber,omitempty"`
 	TaxMethod        *TaxMethod            `json:"taxMethod,omitempty" validate:"omitempty,oneof=INCLUSIVE EXCLUSIVE NO_TAX"`
@@ -206,7 +204,6 @@ func (s *Section) ToRsSection() *RsSection {
 type RsSection struct {
 	ID               uuid.UUID       `json:"id"`
 	InvoiceID        *uuid.UUID      `json:"invoiceId"`
-	TemplateID       uuid.UUID       `json:"templateId,omitempty"`
 	SectionType      SectionType     `json:"sectionType"`
 	DocumentNumber   string          `json:"documentNumber"`
 	TaxMethod        *TaxMethod      `json:"taxMethod,omitempty"`
