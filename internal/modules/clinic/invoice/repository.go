@@ -188,21 +188,63 @@ func (r *Repository) List(ctx context.Context, filter common.Filter) ([]*Invoice
 	allowedColumns := r.getAllowedFilterColumns()
 	searchCols := []string{}
 
+	// Join tbl_map_invoice_section to pull payment_date and payment_reference
+	// (stored per-section) up to the invoice row. DISTINCT ON invoice id picks
+	// the first non-null section that has either field set.
 	selectQuery := `
 		SELECT 
-			id, clinic_id, contact_id, name,
-			billing_period_from, billing_period_to,
-			invoice_frequency, status, issue_date, due_date, invoice_method,
-			created_at, updated_at
-		FROM tbl_invoice
-		WHERE deleted_at IS NULL
+			i.id, i.clinic_id, i.contact_id, i.name,
+			i.billing_period_from, i.billing_period_to,
+			i.invoice_frequency, i.status, i.issue_date, i.due_date, i.invoice_method,
+			i.created_at, i.updated_at,
+			s.payment_date, s.payment_reference
+		FROM tbl_invoice i
+		LEFT JOIN LATERAL (
+			SELECT payment_date, payment_reference
+			FROM tbl_map_invoice_section
+			WHERE invoice_id = i.id
+			  AND deleted_at IS NULL
+			  AND (payment_date IS NOT NULL OR payment_reference IS NOT NULL)
+			ORDER BY created_at ASC
+			LIMIT 1
+		) s ON true
+		WHERE i.deleted_at IS NULL
 	`
 
 	query, args := common.BuildQuery(selectQuery, filter, allowedColumns, searchCols, false)
-	invoices := make([]*Invoice, 0)
-	err = r.db.SelectContext(ctx, &invoices, sqlx.Rebind(sqlx.DOLLAR, query), args...)
+
+	rows, err := r.db.QueryxContext(ctx, sqlx.Rebind(sqlx.DOLLAR, query), args...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("select invoices failed: %w", err)
+	}
+	defer rows.Close()
+
+	invoices := make([]*Invoice, 0)
+	for rows.Next() {
+		inv := &Invoice{}
+		if err := rows.Scan(
+			&inv.ID,
+			&inv.ClinicID,
+			&inv.ContactID,
+			&inv.Name,
+			&inv.BillingPeriodFrom,
+			&inv.BillingPeriodTo,
+			&inv.InvoiceFrequency,
+			&inv.Status,
+			&inv.IssueDate,
+			&inv.DueDate,
+			&inv.InvoiceMethod,
+			&inv.CreatedAt,
+			&inv.UpdatedAt,
+			&inv.PaymentDate,
+			&inv.PaymentReference,
+		); err != nil {
+			return nil, 0, fmt.Errorf("scan invoice failed: %w", err)
+		}
+		invoices = append(invoices, inv)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("rows error: %w", err)
 	}
 
 	for _, invoice := range invoices {
