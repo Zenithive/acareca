@@ -8,9 +8,9 @@ func ServiceFeeIntroRowCalculation() string {
         <td colspan="3" style="border-bottom: none; padding-top: 5px; padding-bottom: 4px;">
           <table class="layout-table" style="width: 100%%; border-collapse: collapse;">
             <tr>
-              <td style="padding: 0; color: black; width: 65%%; vertical-align: middle;">
+              <td style="padding: 0; color: black; width: 65%%; vertical-align: middle; line-height: 1.4;">
                 {{service_fee_rate_intro.label}}
-                <span style="float: right; font-weight: bold; white-space: nowrap; margin-left: 8px;">
+                <span style="display: inline-block; font-weight: bold; white-space: nowrap; margin-left: 6px;">
                   {{#if is_method_c}}Commission rate{{else}}{{#if billing_method.rate_label}}{{billing_method.rate_label}}{{else}}Fee rate{{/if}}{{/if}}&nbsp;
                   <span class="txt-blue-val">{{service_fee_rate_intro.fee_rate_display}}</span>
                 </span>
@@ -19,15 +19,6 @@ func ServiceFeeIntroRowCalculation() string {
               <td style="width: 15%%; padding: 0;"></td>
             </tr>
           </table>
-          {{#unless is_method_c}}
-            {{#if service_description_items}}
-            <ol style="margin: 6px 0 0 18px; padding: 0; list-style-type: decimal; font-size: 11px; line-height: 1.5; color: var(--text-dark);">
-              {{#each service_description_items}}
-              <li style="margin-bottom: 2px;">{{this}}</li>
-              {{/each}}
-            </ol>
-            {{/if}}
-          {{/unless}}
         </td>
       </tr>`
 }

@@ -135,17 +135,17 @@ func TaxSummarySection() string {
         </table>`
 }
 
-// ServiceFeeIntroRow returns the service fee introduction row HTML for Tax Invoice
+// ServiceFeeIntroRow returns the service fee introduction row HTML for Tax Invoice with inline rate styling
 func ServiceFeeIntroRow() string {
 	return `<tr>
         <td colspan="3" style="border-bottom: none; padding-top: 5px; padding-bottom: 4px;">
           <table class="layout-table" style="width: 100%%; border-collapse: collapse;">
             <tr>
-              <td style="padding: 0; color: var(--text-dark); width: 65%%; vertical-align: middle;">
-                {{billing_method.tax_invoice_intro}}
+              <td style="padding: 0; color: var(--text-dark); width: 65%%; vertical-align: middle; line-height: 1.4;">
+                {{service_fee_rate_intro.label}}
                 {{#unless billing_method.hide_fee_rate}}
-                <span style="float: right; font-weight: bold; white-space: nowrap; margin-left: 8px;">
-                  {{billing_method.rate_label}}&nbsp;
+                <span style="display: inline-block; font-weight: bold; white-space: nowrap; margin-left: 6px;">
+                  {{#if billing_method.rate_label}}{{billing_method.rate_label}}{{else}}Fee rate{{/if}}&nbsp;
                   <span class="txt-blue-val">{{service_fee_rate_intro.fee_rate_display}}</span>
                 </span>
                 {{/unless}}
@@ -154,14 +154,12 @@ func ServiceFeeIntroRow() string {
               <td style="width: 15%%; padding: 0;"></td>
             </tr>
           </table>
-          {{#if billing_method.show_service_description}}
-            {{#if service_description_items}}
+          {{#if tax_invoice_description_items}}
             <ol style="margin: 6px 0 0 18px; padding: 0; list-style-type: decimal; font-size: 11px; line-height: 1.5; color: var(--text-dark);">
-              {{#each service_description_items}}
+              {{#each tax_invoice_description_items}}
               <li style="margin-bottom: 2px;">{{this}}</li>
               {{/each}}
             </ol>
-            {{/if}}
           {{/if}}
         </td>
       </tr>`
@@ -429,6 +427,7 @@ func CSS() string {
   --primary-color: {{coalesce template_settings.primary_color "#1f4e5f"}};
   --accent-color: {{coalesce template_settings.accent_color "#5f96b4"}};
   --text-dark: #000000;
+  --text-blue: #0096FF;
   --pos-green: #007a3d;
   --neg-red: #c50505;
 }
@@ -436,7 +435,7 @@ func CSS() string {
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-  font-family: '{{coalesce template_settings.body_font_family_css template_settings.body_font_family "Arial"}}', sans-serif;
+  font-family: '{{coalesce template_settings.body_font_family_css template_settings.body_font_family "Arial"}}', Arial, sans-serif;
   font-size: 11px;
   color: var(--text-dark);
   background: #ffffff;
@@ -490,7 +489,7 @@ body {
 }
 
 .hdr-clinic-name {
-  font-family: '{{coalesce template_settings.header_font_family_css template_settings.header_font_family "Arial"}}', sans-serif;
+  font-family: '{{coalesce template_settings.header_font_family_css template_settings.header_font_family "Arial"}}', Arial, sans-serif;
   font-size: 16px;
   font-weight: bold;
   color: var(--primary-color);
@@ -510,7 +509,7 @@ body {
 }
 
 .hdr-doc-title {
-  font-family: '{{coalesce template_settings.header_font_family_css template_settings.header_font_family "Arial"}}', sans-serif;
+  font-family: '{{coalesce template_settings.header_font_family_css template_settings.header_font_family "Arial"}}', Arial, sans-serif;
   font-size: 18px;
   font-weight: bold;
   color: var(--primary-color);
@@ -554,6 +553,7 @@ body {
   line-height: 1.3;
 }
 
+/* Base Data Table Styling */
 .data-table {
   width: 100%;
   border-collapse: collapse;
@@ -592,7 +592,7 @@ body {
 }
 
 .txt-blue-val {
-  color: var(--text-dark) !important;
+  color: var(--text-blue) !important;
   font-weight: normal !important;
 }
 

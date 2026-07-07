@@ -32,13 +32,13 @@ type IPDF interface {
 }
 
 type PDFService struct {
-	templateRepo repository.ITemplateRepository
-	settingRepo  repository.ISettingRepository
+	templateRepo  repository.ITemplateRepository
+	settingRepo   repository.ISettingRepository
 	invoiceReader IInvoiceReader
-	encryption   IEncryptionService
-	renderer     render.IPDFRenderer
-	dataMapper   *render.DataMapper
-	cfg          *config.Config
+	encryption    IEncryptionService
+	renderer      render.IPDFRenderer
+	dataMapper    *render.DataMapper
+	cfg           *config.Config
 }
 
 func NewPDFService(templateRepo repository.ITemplateRepository, settingRepo repository.ISettingRepository, encryption IEncryptionService, renderer render.IPDFRenderer, cfg *config.Config) IPDF {
@@ -244,7 +244,7 @@ func (s *PDFService) DownloadPDF(ctx context.Context, clinicId uuid.UUID, invoic
 		return nil, "", fmt.Errorf("failed to generate final PDF document: %w", err)
 	}
 
-	filename := fmt.Sprintf("INVOICE_%s.pdf", invoiceId.String()[:8])
+	filename := fmt.Sprintf("INVOICE_%s", invoiceId.String()[:8])
 	return pdfBytes, filename, nil
 }
 
