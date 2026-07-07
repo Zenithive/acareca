@@ -17,3 +17,5 @@ server
 # OS
 .DS_Store
 Thumbs.db
+
+/deployment

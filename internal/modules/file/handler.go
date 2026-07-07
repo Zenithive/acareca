@@ -35,7 +35,7 @@ func NewHandler(svc Service) Handler {
 // @Produce json
 // @Security BearerToken
 // @Param id path string true "Document ID (UUID)"
-// @Success 200 {object} response.RsBase{data=RsDocument}
+// @Success 200 {object} response.RsBase{data=common.RsDocument}
 // @Failure 400 {object} response.RsError
 // @Failure 401 {object} response.RsError
 // @Failure 404 {object} response.RsError
@@ -92,7 +92,7 @@ func (h *handler) GetDocument(c *gin.Context) {
 // @Param limit query int false "Items per page" default(20)
 // @Param sort query string false "Sort field" default(created_at)
 // @Param order query string false "Sort order (asc/desc)" default(desc)
-// @Success 200 {object} response.RsBase{data=RsListDocuments}
+// @Success 200 {object} response.RsBase{data=file.RsListDocuments}
 // @Failure 400 {object} response.RsError
 // @Failure 401 {object} response.RsError
 // @Router /files [get]
@@ -136,7 +136,7 @@ func (h *handler) ListDocument(c *gin.Context) {
 // @Security BearerToken
 // @Param id path string true "Document ID (UUID)"
 // @Param request body RqUpdateDocument true "Update data"
-// @Success 200 {object} response.RsBase{data=RsDocument}
+// @Success 200 {object} response.RsBase{data=common.RsDocument}
 // @Failure 400 {object} response.RsError
 // @Failure 401 {object} response.RsError
 // @Failure 403 {object} response.RsError
@@ -247,7 +247,7 @@ func (h *handler) DeleteDocument(c *gin.Context) {
 // @Produce json
 // @Security BearerToken
 // @Param request body RqGeneratePresignedUploadURL true "Presigned URL parameters"
-// @Success 200 {object} response.RsBase{data=RsPresignedUploadURL}
+// @Success 200 {object} response.RsBase{data=file.RsPresignedUploadURL}
 // @Failure 400 {object} response.RsError
 // @Failure 401 {object} response.RsError
 // @Failure 500 {object} response.RsError

@@ -7549,7 +7549,7 @@ const docTemplate = `{
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/file.RsDocument"
+                                            "$ref": "#/definitions/common.RsDocument"
                                         }
                                     }
                                 }
@@ -7623,7 +7623,7 @@ const docTemplate = `{
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/file.RsDocument"
+                                            "$ref": "#/definitions/common.RsDocument"
                                         }
                                     }
                                 }
@@ -10732,7 +10732,7 @@ const docTemplate = `{
                     "200": {
                         "description": "Resolved style settings specifications model payload",
                         "schema": {
-                            "$ref": "#/definitions/template.RsSetting"
+                            "$ref": "#/definitions/common.RsSetting"
                         }
                     },
                     "400": {
@@ -11060,7 +11060,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/template.InvoiceData"
+                            "$ref": "#/definitions/common.Invoice"
                         }
                     }
                 ],
@@ -11141,7 +11141,7 @@ const docTemplate = `{
                     "200": {
                         "description": "Settings modified context mapping properties updated cleanly",
                         "schema": {
-                            "$ref": "#/definitions/template.RsSetting"
+                            "$ref": "#/definitions/common.RsSetting"
                         }
                     },
                     "400": {
@@ -12398,7 +12398,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "document": {
-                    "$ref": "#/definitions/file.RsDocument"
+                    "$ref": "#/definitions/common.RsDocument"
                 },
                 "email": {
                     "type": "string"
@@ -12467,7 +12467,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "document": {
-                    "$ref": "#/definitions/file.RsDocument"
+                    "$ref": "#/definitions/common.RsDocument"
                 },
                 "email": {
                     "type": "string"
@@ -13304,7 +13304,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "document": {
-                    "$ref": "#/definitions/file.RsDocument"
+                    "$ref": "#/definitions/common.RsDocument"
                 },
                 "financial_settings": {
                     "$ref": "#/definitions/clinic.RsFinancialSettings"
@@ -13595,6 +13595,295 @@ const docTemplate = `{
             "properties": {
                 "is_unique": {
                     "type": "boolean"
+                }
+            }
+        },
+        "common.InvContact": {
+            "type": "object",
+            "properties": {
+                "abn": {
+                    "type": "string"
+                },
+                "address": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "email": {
+                    "type": "string"
+                },
+                "fname": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "lname": {
+                    "type": "string"
+                },
+                "phone": {
+                    "type": "string"
+                }
+            }
+        },
+        "common.Invoice": {
+            "type": "object",
+            "properties": {
+                "accent_color": {
+                    "type": "string"
+                },
+                "amount_in_words": {
+                    "type": "string"
+                },
+                "bill_from": {
+                    "$ref": "#/definitions/common.InvContact"
+                },
+                "bill_to": {
+                    "$ref": "#/definitions/common.InvContact"
+                },
+                "billing_period": {
+                    "type": "string"
+                },
+                "body_font_family": {
+                    "type": "string"
+                },
+                "clinic_name": {
+                    "type": "string"
+                },
+                "custom_fee_rate": {
+                    "type": "string"
+                },
+                "custom_fee_rate_display": {
+                    "description": "Tax Invoice fee rate display (e.g. \"38.5%\")",
+                    "type": "string"
+                },
+                "custom_payment_account": {
+                    "type": "string"
+                },
+                "custom_payment_account_name": {
+                    "type": "string"
+                },
+                "custom_payment_bsb": {
+                    "type": "string"
+                },
+                "custom_payment_method": {
+                    "type": "string"
+                },
+                "due_date_display": {
+                    "type": "string"
+                },
+                "grand_total": {
+                    "type": "number"
+                },
+                "has_attachments": {
+                    "type": "boolean"
+                },
+                "header_font_family": {
+                    "type": "string"
+                },
+                "invoice_frequency": {
+                    "type": "string"
+                },
+                "invoice_number": {
+                    "type": "string"
+                },
+                "issue_date_display": {
+                    "type": "string"
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/common.LineItem"
+                    }
+                },
+                "logo_initial": {
+                    "type": "string"
+                },
+                "logo_url": {
+                    "type": "string"
+                },
+                "notes": {
+                    "type": "string"
+                },
+                "patient_fee_items": {
+                    "description": "Calculation Sheet Collections",
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": true
+                    }
+                },
+                "payment_date_display": {
+                    "type": "string"
+                },
+                "payment_method_label": {
+                    "type": "string"
+                },
+                "primary_color": {
+                    "description": "Exported styling fields targetable by structural assignments",
+                    "type": "string"
+                },
+                "remittance_items": {
+                    "description": "Remittance Advice Collections",
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": true
+                    }
+                },
+                "service_description_items": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "service_fee_items": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": true
+                    }
+                },
+                "service_fee_rate_intro": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "settlement_items": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": true
+                    }
+                },
+                "show_logo": {
+                    "type": "boolean"
+                },
+                "show_logo_image": {
+                    "type": "boolean"
+                },
+                "subtotal": {
+                    "type": "number"
+                },
+                "table_style_class": {
+                    "type": "string"
+                },
+                "tax_invoice_items": {
+                    "description": "Tax Invoice Collections",
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": true
+                    }
+                },
+                "tax_total": {
+                    "type": "number"
+                },
+                "template_settings": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "terms_text": {
+                    "type": "string"
+                },
+                "totals_amounts_caption": {
+                    "type": "string"
+                },
+                "totals_grand_label": {
+                    "type": "string"
+                },
+                "watermark_enabled": {
+                    "type": "boolean"
+                },
+                "watermark_text": {
+                    "type": "string"
+                }
+            }
+        },
+        "common.LineItem": {
+            "type": "object",
+            "properties": {
+                "amount": {
+                    "type": "number"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "running_total": {
+                    "type": "number"
+                }
+            }
+        },
+        "common.RsDocument": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "file_key": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "original_name": {
+                    "type": "string"
+                },
+                "uploaded_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "common.RsSetting": {
+            "type": "object",
+            "properties": {
+                "accent_color": {
+                    "type": "string"
+                },
+                "body_font_family": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "header_font_family": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "invoice_id": {
+                    "type": "string"
+                },
+                "is_logo": {
+                    "type": "boolean"
+                },
+                "is_water_mark": {
+                    "type": "boolean"
+                },
+                "logo": {
+                    "$ref": "#/definitions/common.RsDocument"
+                },
+                "payment_terms": {
+                    "type": "string"
+                },
+                "primary_color": {
+                    "type": "string"
+                },
+                "table_style": {
+                    "type": "string"
+                },
+                "term_text": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "water_mark_text": {
+                    "type": "string"
                 }
             }
         },
@@ -14178,33 +14467,13 @@ const docTemplate = `{
                 }
             }
         },
-        "file.RsDocument": {
-            "type": "object",
-            "properties": {
-                "created_at": {
-                    "type": "string"
-                },
-                "file_key": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "original_name": {
-                    "type": "string"
-                },
-                "uploaded_at": {
-                    "type": "string"
-                }
-            }
-        },
         "file.RsListDocuments": {
             "type": "object",
             "properties": {
                 "documents": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/file.RsDocument"
+                        "$ref": "#/definitions/common.RsDocument"
                     }
                 }
             }
@@ -15665,9 +15934,6 @@ const docTemplate = `{
         },
         "section.RqSection": {
             "type": "object",
-            "required": [
-                "documentNumber"
-            ],
             "properties": {
                 "documentNumber": {
                     "type": "string"
@@ -15710,9 +15976,6 @@ const docTemplate = `{
                             "$ref": "#/definitions/section.TaxMethod"
                         }
                     ]
-                },
-                "templateId": {
-                    "type": "string"
                 }
             }
         },
@@ -15769,9 +16032,6 @@ const docTemplate = `{
                             "$ref": "#/definitions/section.TaxMethod"
                         }
                     ]
-                },
-                "templateId": {
-                    "type": "string"
                 }
             }
         },
@@ -15817,9 +16077,6 @@ const docTemplate = `{
                 "taxMethod": {
                     "$ref": "#/definitions/section.TaxMethod"
                 },
-                "templateId": {
-                    "type": "string"
-                },
                 "updatedAt": {
                     "type": "string"
                 }
@@ -15829,8 +16086,8 @@ const docTemplate = `{
             "type": "string",
             "enum": [
                 "CALCULATION_STATEMENT",
-                "TAX_INVOICE",
-                "REMITTANCE_ADVICE",
+                "SFA_INVOICE",
+                "REMITTANCE_INVOICE",
                 "RCTI"
             ],
             "x-enum-varnames": [
@@ -16078,233 +16335,6 @@ const docTemplate = `{
                 "StatusInactive"
             ]
         },
-        "template.Attachment": {
-            "type": "object",
-            "properties": {
-                "file_name": {
-                    "type": "string"
-                }
-            }
-        },
-        "template.InvoiceData": {
-            "type": "object",
-            "properties": {
-                "accent_color": {
-                    "type": "string"
-                },
-                "amount_in_words": {
-                    "type": "string"
-                },
-                "attachments": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/template.Attachment"
-                    }
-                },
-                "bill_from": {
-                    "$ref": "#/definitions/template.PartyInfo"
-                },
-                "bill_to": {
-                    "$ref": "#/definitions/template.PartyInfo"
-                },
-                "billing_period": {
-                    "type": "string"
-                },
-                "body_font_family": {
-                    "type": "string"
-                },
-                "clinic_name": {
-                    "type": "string"
-                },
-                "custom_fee_rate": {
-                    "type": "string"
-                },
-                "custom_fee_rate_display": {
-                    "description": "Tax Invoice fee rate display (e.g. \"38.5%\")",
-                    "type": "string"
-                },
-                "custom_payment_account": {
-                    "type": "string"
-                },
-                "custom_payment_account_name": {
-                    "type": "string"
-                },
-                "custom_payment_bsb": {
-                    "type": "string"
-                },
-                "custom_payment_method": {
-                    "type": "string"
-                },
-                "due_date_display": {
-                    "type": "string"
-                },
-                "grand_total": {
-                    "type": "number"
-                },
-                "has_attachments": {
-                    "type": "boolean"
-                },
-                "header_font_family": {
-                    "type": "string"
-                },
-                "invoice_frequency": {
-                    "type": "string"
-                },
-                "invoice_number": {
-                    "type": "string"
-                },
-                "issue_date_display": {
-                    "type": "string"
-                },
-                "items": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/template.LineItem"
-                    }
-                },
-                "logo_initial": {
-                    "type": "string"
-                },
-                "logo_url": {
-                    "type": "string"
-                },
-                "notes": {
-                    "type": "string"
-                },
-                "patient_fee_items": {
-                    "description": "Calculation Sheet Collections",
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "additionalProperties": true
-                    }
-                },
-                "payment_date_display": {
-                    "type": "string"
-                },
-                "payment_method_label": {
-                    "type": "string"
-                },
-                "primary_color": {
-                    "description": "Exported styling fields targetable by structural assignments",
-                    "type": "string"
-                },
-                "remittance_items": {
-                    "description": "Remittance Advice Collections",
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "additionalProperties": true
-                    }
-                },
-                "service_description_items": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "service_fee_items": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "additionalProperties": true
-                    }
-                },
-                "service_fee_rate_intro": {
-                    "type": "object",
-                    "additionalProperties": true
-                },
-                "settlement_items": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "additionalProperties": true
-                    }
-                },
-                "show_logo": {
-                    "type": "boolean"
-                },
-                "show_logo_image": {
-                    "type": "boolean"
-                },
-                "subtotal": {
-                    "type": "number"
-                },
-                "table_style_class": {
-                    "type": "string"
-                },
-                "tax_invoice_items": {
-                    "description": "Tax Invoice Collections",
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "additionalProperties": true
-                    }
-                },
-                "tax_total": {
-                    "type": "number"
-                },
-                "template_settings": {
-                    "type": "object",
-                    "additionalProperties": true
-                },
-                "terms_text": {
-                    "type": "string"
-                },
-                "totals_amounts_caption": {
-                    "type": "string"
-                },
-                "totals_grand_label": {
-                    "type": "string"
-                },
-                "watermark_enabled": {
-                    "type": "boolean"
-                },
-                "watermark_text": {
-                    "type": "string"
-                }
-            }
-        },
-        "template.LineItem": {
-            "type": "object",
-            "properties": {
-                "amount": {
-                    "type": "number"
-                },
-                "description": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "running_total": {
-                    "type": "number"
-                }
-            }
-        },
-        "template.PartyInfo": {
-            "type": "object",
-            "properties": {
-                "abn": {
-                    "type": "string"
-                },
-                "address": {
-                    "type": "string"
-                },
-                "email": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "payment_method": {
-                    "type": "string"
-                },
-                "phone": {
-                    "type": "string"
-                }
-            }
-        },
         "template.RqGlobalTemplate": {
             "type": "object",
             "required": [
@@ -16369,56 +16399,6 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "term_text": {
-                    "type": "string"
-                },
-                "water_mark_text": {
-                    "type": "string"
-                }
-            }
-        },
-        "template.RsSetting": {
-            "type": "object",
-            "properties": {
-                "accent_color": {
-                    "type": "string"
-                },
-                "body_font_family": {
-                    "type": "string"
-                },
-                "created_at": {
-                    "type": "string"
-                },
-                "header_font_family": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "invoice_id": {
-                    "type": "string"
-                },
-                "is_logo": {
-                    "type": "boolean"
-                },
-                "is_water_mark": {
-                    "type": "boolean"
-                },
-                "logo": {
-                    "$ref": "#/definitions/file.RsDocument"
-                },
-                "payment_terms": {
-                    "type": "string"
-                },
-                "primary_color": {
-                    "type": "string"
-                },
-                "table_style": {
-                    "type": "string"
-                },
-                "term_text": {
-                    "type": "string"
-                },
-                "updated_at": {
                     "type": "string"
                 },
                 "water_mark_text": {
