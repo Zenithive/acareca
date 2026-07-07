@@ -9,32 +9,32 @@ const (
 )
 
 type BillingMethodView struct {
-	PatientFeesLabel       string
-	ServiceFeeSectionLabel string
+	PatientFeesLabel       string `json:"patient_fees_label"`
+	ServiceFeeSectionLabel string `json:"service_fee_section_label"`
 
 	// Rate display
-	RateLabel   string // "Fee rate" vs "Commission rate"
-	HideFeeRate bool
+	RateLabel   string `json:"rate_label"` // "Fee rate" vs "Commission rate"
+	HideFeeRate bool   `json:"hide_fee_rate"`
 
 	// Tax invoice specific
-	TaxInvoiceIntro    string
-	TaxInvoiceTitle    string
-	InvoiceNumberLabel string
+	TaxInvoiceIntro    string `json:"tax_invoice_intro"`
+	TaxInvoiceTitle    string `json:"tax_invoice_title"`
+	InvoiceNumberLabel string `json:"invoice_number_label"`
 
 	// Address banner
-	BillToLabel  string // "BILL TO" vs "SUPPLIER (DENTIST)"
-	ShowRCTINote bool
+	BillToLabel  string `json:"bill_to_label"` // "BILL TO" vs "SUPPLIER (DENTIST)"
+	ShowRCTINote bool   `json:"show_rcti_note"`
 
 	// Features
-	ShowServiceDescription bool
-	ShowPaymentDetails     bool
-	ShowRemittance         bool
+	ShowServiceDescription bool `json:"show_service_description"`
+	ShowPaymentDetails     bool `json:"show_payment_details"`
+	ShowRemittance         bool `json:"show_remittance"`
 
 	// References
-	PageTwoLabel string // "Tax Invoice (page 2)" vs "RCTI (page 2)"
+	PageTwoLabel string `json:"page_two_label"` // "Tax Invoice (page 2)" vs "RCTI (page 2)"
 
 	// Default text
-	DefaultFooterNote string // used only if no custom notes/terms supplied
+	DefaultFooterNote string `json:"default_footer_note"` // used only if no custom notes/terms supplied
 }
 
 func MethodSfaClinicCollectConfig() BillingMethodView {
@@ -78,7 +78,7 @@ func MethodBDentistCollectConfig() BillingMethodView {
 func MethodCIndependentContractorConfig() BillingMethodView {
 	return BillingMethodView{
 		PatientFeesLabel:       "1. PATIENT FEES COLLECTED ON YOUR BEHALF",
-		ServiceFeeSectionLabel: "2. DENTIST COMMISSION (Independent Contractor)",
+		ServiceFeeSectionLabel: "4. DENTIST COMMISSION (Independent Contractor)",
 		RateLabel:              "Commission rate",
 		TaxInvoiceIntro:        "Professional dental services for the period {{billing_period}}, remunerated at the agreed commission rate on net patient fees.",
 		HideFeeRate:            true,
@@ -146,8 +146,11 @@ type TemplateDataBuilder struct {
 
 func (b TemplateDataBuilder) Build() map[string]interface{} {
 	bm := MapBillingMethod(b.Method)
+	if bm.ServiceFeeSectionLabel == "" {
+		bm.ServiceFeeSectionLabel = "4. SERVICE & FACILITY FEE"
+	}
 
-	data := make(map[string]interface{}, len(b.BaseData)+3)
+	data := make(map[string]interface{}, len(b.BaseData)+4)
 	for k, v := range b.BaseData {
 		data[k] = v
 	}
@@ -166,6 +169,12 @@ func (b TemplateDataBuilder) Build() map[string]interface{} {
 	data["billing_method"] = bm
 	data["footer_note"] = footerNoteResolver.Resolve()
 	data["payment_terms_resolved"] = paymentTermsResolver.Resolve()
+
+	// TaxInvoiceHTML branches on {{#if is_method_b}} directly (in addition to
+	// billing_method.show_payment_details), so it must be set explicitly here
+	// rather than left to whatever GetInvoiceRenderData did or didn't set.
+	data["is_method_b"] = BillingMethod(b.Method) == MethodSFA_DENTIST_COLLECTS
+	data["is_method_c"] = BillingMethod(b.Method) == MethodINDEPENDENT_CONTRACTOR
 
 	return data
 }

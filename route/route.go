@@ -242,7 +242,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 		templateRepo templateRepository.ITemplateRepository,
 		settingRepo templateRepository.ISettingRepository,
 	) template.IService {
-		return templateService.NewCompositeService(cfg, templateRepo, settingRepo)
+		return templateService.NewCompositeServiceWithDB(dbConn, cfg, templateRepo, settingRepo)
 	})
 
 	tempSvc := templateContainer.Service()

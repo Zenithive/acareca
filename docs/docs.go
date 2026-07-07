@@ -10763,7 +10763,7 @@ const docTemplate = `{
                         "BearerToken": []
                     }
                 ],
-                "description": "Queries static database invoice documents, evaluates values natively against dynamic parameters, and streams a file binary response",
+                "description": "Queries the invoice record, resolves the template sequence from its billing method type, and streams the compiled PDF",
                 "produces": [
                     "application/pdf"
                 ],
@@ -10777,13 +10777,6 @@ const docTemplate = `{
                         "description": "Target Invoice Entity Context Index UUID",
                         "name": "invoice_id",
                         "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Template UUID ID (can be repeated for multiple templates)",
-                        "name": "templateId",
-                        "in": "query",
                         "required": true
                     }
                 ],
@@ -13683,6 +13676,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "invoice_frequency": {
+                    "type": "string"
+                },
+                "invoice_id": {
                     "type": "string"
                 },
                 "invoice_number": {

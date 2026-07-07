@@ -10,6 +10,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/iamarpitzala/acareca/pkg/config"
+	"github.com/jmoiron/sqlx"
 )
 
 type CompositeService struct {
@@ -19,20 +20,19 @@ type CompositeService struct {
 	syncSvc     ISync
 }
 
-func NewCompositeService(cfg *config.Config, templateRepo repository.ITemplateRepository, settingRepo repository.ISettingRepository) *CompositeService {
+// NewCompositeServiceWithDB creates a CompositeService with full invoice method resolution.
+// Pass db so that DownloadPDF can fetch the billing method from the invoice record.
+func NewCompositeServiceWithDB(db *sqlx.DB, cfg *config.Config, templateRepo repository.ITemplateRepository, settingRepo repository.ISettingRepository) *CompositeService {
 	encryptionSvc := NewEncryptionService(cfg.TemplateEncryptionKey)
 
-	var templRepo repository.ITemplateRepository = templateRepo
-	var setRepo repository.ISettingRepository = settingRepo
-
-	settingSvc := NewSetting(setRepo)
-
-	templateSvc := NewTemplateService(templRepo, encryptionSvc, settingSvc)
-
+	settingSvc := NewSetting(settingRepo)
+	templateSvc := NewTemplateService(templateRepo, encryptionSvc, settingSvc)
 	renderer := render.NewChromeRenderer()
-	pdfSvc := NewPDFService(templRepo, setRepo, encryptionSvc, renderer, cfg)
 
-	syncSvc := NewSyncService(templRepo, setRepo, encryptionSvc)
+	invoiceReader := newDBInvoiceReader(db)
+	pdfSvc := NewPDFServiceWithInvoiceReader(templateRepo, settingRepo, invoiceReader, encryptionSvc, renderer, cfg)
+
+	syncSvc := NewSyncService(templateRepo, settingRepo, encryptionSvc)
 
 	return &CompositeService{
 		templateSvc: templateSvc,
@@ -41,6 +41,7 @@ func NewCompositeService(cfg *config.Config, templateRepo repository.ITemplateRe
 		syncSvc:     syncSvc,
 	}
 }
+
 
 func (cs *CompositeService) BulkCreate(ctx context.Context) (*[]template.RsTemplate, error) {
 	commonRs, err := cs.templateSvc.BulkCreate(ctx)
@@ -98,8 +99,8 @@ func (cs *CompositeService) GenerateMultiPDF(ctx context.Context, templateIds []
 	return cs.pdfSvc.GenerateMultiPDF(ctx, templateIds, data)
 }
 
-func (cs *CompositeService) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateIds []uuid.UUID, invoiceId uuid.UUID) ([]byte, string, error) {
-	return cs.pdfSvc.DownloadPDF(ctx, clinicId, templateIds, invoiceId)
+func (cs *CompositeService) DownloadPDF(ctx context.Context, clinicId uuid.UUID, invoiceId uuid.UUID) ([]byte, string, error) {
+	return cs.pdfSvc.DownloadPDF(ctx, clinicId, invoiceId)
 }
 
 func (cs *CompositeService) BulkSyncDefaults(ctx context.Context) error {

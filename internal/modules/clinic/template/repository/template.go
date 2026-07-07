@@ -22,6 +22,7 @@ type ITemplateRepository interface {
 	Update(ctx context.Context, t *common.Template) error
 	Delete(ctx context.Context, id uuid.UUID) error
 	Get(ctx context.Context, id uuid.UUID) (*common.Template, error)
+	GetByName(ctx context.Context, name string) (*common.Template, error)
 	List(ctx context.Context, method string) (*util.RsList, error)
 	BulkCreate(ctx context.Context, templates []common.Template) error
 	ValidateAccess(ctx context.Context, templateIds []uuid.UUID) error
@@ -105,6 +106,24 @@ func (r *TemplateRepository) Get(ctx context.Context, id uuid.UUID) (*common.Tem
 	}
 
 	return &template, nil
+}
+
+func (r *TemplateRepository) GetByName(ctx context.Context, name string) (*common.Template, error) {
+	const q = `
+		SELECT id, name, description, html, css, is_default, is_active, created_at, updated_at, deleted_at
+		FROM tbl_template
+		WHERE name = $1 AND deleted_at IS NULL AND is_active = TRUE
+		LIMIT 1`
+
+	var t common.Template
+	if err := r.db.GetContext(ctx, &t, q, name); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("template not found: %q", name)
+		}
+		return nil, fmt.Errorf("failed to get template by name: %w", err)
+	}
+
+	return &t, nil
 }
 
 func (r *TemplateRepository) List(ctx context.Context, method string) (*util.RsList, error) {
