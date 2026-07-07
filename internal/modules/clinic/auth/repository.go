@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/iamarpitzala/acareca/internal/modules/file"
+	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -53,7 +53,7 @@ type Repository interface {
 	CompletePasswordReset(ctx context.Context, tokenHash string, newPasswordHash string) error
 
 	// Document
-	GetDocumentByID(ctx context.Context, documentID *uuid.UUID) (*file.Document, error)
+	GetDocumentByID(ctx context.Context, documentID *uuid.UUID) (*common.Document, error)
 }
 
 type repository struct {
@@ -463,7 +463,7 @@ func (r *repository) CompletePasswordReset(ctx context.Context, tokenHash string
 	return nil
 }
 
-func (r *repository) GetDocumentByID(ctx context.Context, documentID *uuid.UUID) (*file.Document, error) {
+func (r *repository) GetDocumentByID(ctx context.Context, documentID *uuid.UUID) (*common.Document, error) {
 	query := `
 		SELECT id, owner_id, owner_role, object_key, bucket, original_name, extension,
 		       mime_type, size_bytes, checksum, status, is_public, uploaded_at,
@@ -472,7 +472,7 @@ func (r *repository) GetDocumentByID(ctx context.Context, documentID *uuid.UUID)
 		WHERE id = $1 AND deleted_at IS NULL
 	`
 
-	var doc file.Document
+	var doc common.Document
 	if err := r.db.GetContext(ctx, &doc, query, documentID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil

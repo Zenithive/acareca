@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -18,12 +19,12 @@ var (
 )
 
 type Repository interface {
-	Create(ctx context.Context, doc *Document, tx *sqlx.Tx) (*Document, error)
-	FindByID(ctx context.Context, id uuid.UUID) (*Document, error)
-	FindByOwner(ctx context.Context, ownerID uuid.UUID, filters *RqListDocuments) ([]Document, int64, error)
-	Update(ctx context.Context, doc *Document, tx *sqlx.Tx) (*Document, error)
+	Create(ctx context.Context, doc *common.Document, tx *sqlx.Tx) (*common.Document, error)
+	FindByID(ctx context.Context, id uuid.UUID) (*common.Document, error)
+	FindByOwner(ctx context.Context, ownerID uuid.UUID, filters *RqListDocument) ([]common.Document, int64, error)
+	Update(ctx context.Context, doc *common.Document, tx *sqlx.Tx) (*common.Document, error)
 	Delete(ctx context.Context, id uuid.UUID, tx *sqlx.Tx) error
-	UpdateStatus(ctx context.Context, id uuid.UUID, status string, doc *Document, tx *sqlx.Tx) error
+	UpdateStatus(ctx context.Context, id uuid.UUID, status string, doc *common.Document, tx *sqlx.Tx) error
 }
 
 type repository struct {
@@ -35,7 +36,7 @@ func NewRepository(db *sqlx.DB) Repository {
 }
 
 // Create creates a new document record
-func (r *repository) Create(ctx context.Context, doc *Document, tx *sqlx.Tx) (*Document, error) {
+func (r *repository) Create(ctx context.Context, doc *common.Document, tx *sqlx.Tx) (*common.Document, error) {
 	query := `
 		INSERT INTO tbl_document (
 			owner_id, owner_role, object_key, bucket,
@@ -71,7 +72,7 @@ func (r *repository) Create(ctx context.Context, doc *Document, tx *sqlx.Tx) (*D
 }
 
 // FindByID finds a document by ID
-func (r *repository) FindByID(ctx context.Context, id uuid.UUID) (*Document, error) {
+func (r *repository) FindByID(ctx context.Context, id uuid.UUID) (*common.Document, error) {
 	query := `
 		SELECT 
 			id, owner_id, owner_role, object_key, bucket,
@@ -82,7 +83,7 @@ func (r *repository) FindByID(ctx context.Context, id uuid.UUID) (*Document, err
 		FROM tbl_document
 		WHERE id = $1 AND deleted_at IS NULL`
 
-	var doc Document
+	var doc common.Document
 	err := r.db.GetContext(ctx, &doc, query, id)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -95,7 +96,7 @@ func (r *repository) FindByID(ctx context.Context, id uuid.UUID) (*Document, err
 }
 
 // FindByOwner finds documents by owner with pagination and filters
-func (r *repository) FindByOwner(ctx context.Context, ownerID uuid.UUID, filters *RqListDocuments) ([]Document, int64, error) {
+func (r *repository) FindByOwner(ctx context.Context, ownerID uuid.UUID, filters *RqListDocument) ([]common.Document, int64, error) {
 	// Build query with filters
 	query := `
 		SELECT 
@@ -128,7 +129,7 @@ func (r *repository) FindByOwner(ctx context.Context, ownerID uuid.UUID, filters
 	}
 
 	// Execute query
-	var docs []Document
+	var docs []common.Document
 	err = r.db.SelectContext(ctx, &docs, query, args...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("find documents by owner: %w", err)
@@ -138,7 +139,7 @@ func (r *repository) FindByOwner(ctx context.Context, ownerID uuid.UUID, filters
 }
 
 // Update updates a document
-func (r *repository) Update(ctx context.Context, doc *Document, tx *sqlx.Tx) (*Document, error) {
+func (r *repository) Update(ctx context.Context, doc *common.Document, tx *sqlx.Tx) (*common.Document, error) {
 	query := `
 		UPDATE tbl_document
 		SET 
@@ -169,7 +170,7 @@ func (r *repository) Update(ctx context.Context, doc *Document, tx *sqlx.Tx) (*D
 }
 
 // UpdateStatus updates document status
-func (r *repository) UpdateStatus(ctx context.Context, id uuid.UUID, status string, doc *Document, tx *sqlx.Tx) error {
+func (r *repository) UpdateStatus(ctx context.Context, id uuid.UUID, status string, doc *common.Document, tx *sqlx.Tx) error {
 	uploadedAt := doc.UploadedAt
 	if status == StatusUploaded {
 		now := time.Now()

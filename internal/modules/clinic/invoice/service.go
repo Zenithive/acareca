@@ -12,6 +12,8 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/invoice/section"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/item"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/template"
+	"github.com/iamarpitzala/acareca/internal/modules/clinic/template/repository"
+	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/iamarpitzala/acareca/internal/shared/mail"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/iamarpitzala/acareca/pkg/config"
@@ -31,26 +33,28 @@ type IService interface {
 }
 
 type Service struct {
-	db         *sqlx.DB
-	repo       IRepository
-	cfg        *config.Config
-	mailer     *mail.Client
-	tplService template.IService
-	clinicSvc  clinicauth.Service
-	tplRepo    template.IRepository
-	itemRepo   item.IRepository
+	db           *sqlx.DB
+	repo         IRepository
+	cfg          *config.Config
+	mailer       *mail.Client
+	tplService   template.IService
+	clinicSvc    clinicauth.Service
+	settingRepo  repository.ISettingRepository
+	templateRepo repository.ITemplateRepository
+	itemRepo     item.IRepository
 }
 
-func NewService(db *sqlx.DB, repo IRepository, cfg *config.Config, tplService template.IService, clinicSvc clinicauth.Service, tplRepo template.IRepository) IService {
+func NewService(db *sqlx.DB, repo IRepository, cfg *config.Config, tplService template.IService, clinicSvc clinicauth.Service, settingRepo repository.ISettingRepository, templateRepo repository.ITemplateRepository) IService {
 	return &Service{
-		db:         db,
-		repo:       repo,
-		cfg:        cfg,
-		mailer:     mail.NewClient(cfg.ResendAPIKey, cfg.SenderEmail),
-		tplService: tplService,
-		clinicSvc:  clinicSvc,
-		tplRepo:    tplRepo,
-		itemRepo:   item.NewRepository(db),
+		db:           db,
+		repo:         repo,
+		cfg:          cfg,
+		mailer:       mail.NewClient(cfg.ResendAPIKey, cfg.SenderEmail),
+		tplService:   tplService,
+		clinicSvc:    clinicSvc,
+		settingRepo:  settingRepo,
+		templateRepo: templateRepo,
+		itemRepo:     item.NewRepository(db),
 	}
 }
 
@@ -218,7 +222,7 @@ func (s *Service) Update(ctx context.Context, invoice *RqUpdateInvoice) error {
 }
 
 func (s *Service) GetClinicTemplate(ctx context.Context, clinicID uuid.UUID) (*RsInvoiceMailTemplate, error) {
-	dbSubject, dbBody, err := s.repo.GetSavedClinicMailTemplate(ctx, clinicID)
+	dbSubject, dbBody, err := s.templateRepo.GetClinicMailTemplate(ctx, clinicID)
 	if err != nil {
 		dbSubject, dbBody = "", ""
 	}
@@ -233,7 +237,7 @@ func (s *Service) GetClinicTemplate(ctx context.Context, clinicID uuid.UUID) (*R
 }
 
 func (s *Service) SaveClinicTemplate(ctx context.Context, clinicID uuid.UUID, rq *RqSaveMailTemplate) error {
-	return s.repo.SaveClinicMailTemplate(ctx, clinicID, rq.Subject, rq.Body)
+	return s.templateRepo.SaveClinicMailTemplate(ctx, clinicID, rq.Subject, rq.Body)
 }
 
 func (s *Service) ResendInvoiceEmail(ctx context.Context, id uuid.UUID) error {
@@ -253,7 +257,7 @@ func (s *Service) ResendInvoiceEmail(ctx context.Context, id uuid.UUID) error {
 		return fmt.Errorf("failed to generate invoice attachment document: %w", err)
 	}
 
-	dbSubject, dbBody, err := s.repo.GetSavedClinicMailTemplate(ctx, rsInvoice.ClinicID)
+	dbSubject, dbBody, err := s.templateRepo.GetClinicMailTemplate(ctx, rsInvoice.ClinicID)
 	if err != nil {
 		dbSubject, dbBody = "", ""
 	}
@@ -300,7 +304,7 @@ func (s *Service) syncTemplateSettings(ctx context.Context, invoiceID uuid.UUID,
 		return nil
 	}
 
-	existingSetting, err := s.tplRepo.GetInvoiceSetting(ctx, invoiceID)
+	existingSetting, err := s.settingRepo.Get(ctx, invoiceID)
 	if err != nil {
 		return fmt.Errorf("failed to fetch invoice settings context: %w", err)
 	}
@@ -309,20 +313,18 @@ func (s *Service) syncTemplateSettings(ctx context.Context, invoiceID uuid.UUID,
 	var isNewOverride bool
 
 	if existingSetting == nil {
-		// No record exists -> create a new setting
 		targetSettingID = uuid.New()
 		isNewOverride = true
 	} else if existingSetting.InvoiceId == nil {
-		// Record exists but is a global default setting -> create a new setting
 		targetSettingID = uuid.New()
 		isNewOverride = true
 	} else {
-		// Custom record exists for this invoice -> Override the exising setting
 		targetSettingID = existingSetting.Id
 		isNewOverride = false
 	}
 
-	dbSetting := template.Setting{
+	// Convert to domain Setting
+	setting := common.Setting{
 		Id:               targetSettingID,
 		InvoiceId:        &invoiceID,
 		PrimaryColor:     lo.FromPtr(src.PrimaryColor),
@@ -338,12 +340,14 @@ func (s *Service) syncTemplateSettings(ctx context.Context, invoiceID uuid.UUID,
 		TableStyle:       src.TableStyle,
 	}
 
+	// Convert template.Setting to domain.Setting
+
 	if isNewOverride {
-		if err := s.tplRepo.CreateSetting(ctx, &dbSetting); err != nil {
+		if err := s.settingRepo.Create(ctx, &setting); err != nil {
 			return fmt.Errorf("failed allocating specific template layout profile: %w", err)
 		}
 	} else {
-		if err := s.tplRepo.UpdateSetting(ctx, &dbSetting, invoiceID); err != nil {
+		if err := s.settingRepo.Update(ctx, &setting, invoiceID); err != nil {
 			return fmt.Errorf("failed overwriting specific layout configuration settings profile: %w", err)
 		}
 	}

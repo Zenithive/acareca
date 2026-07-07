@@ -398,3 +398,16 @@ func MapEventTypeToNotificationEventType(eventType EventType) []NotificationEven
 		return []NotificationEventType{EventSystemActivityAlert}
 	}
 }
+
+func FormatDateString(dateStr string) string {
+	if dateStr == "" {
+		return ""
+	}
+
+	parsedDate, err := ParseFlexibleDate(dateStr)
+	if err != nil {
+		return dateStr
+	}
+
+	return parsedDate.Format("02 Jan 2006")
+}

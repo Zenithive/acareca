@@ -48,24 +48,47 @@ func toFloat64(v any) float64 {
 }
 
 func init() {
-	raymond.RegisterHelper("format_currency", func(amount float64) string {
-		return fmt.Sprintf("$%.2f", math.Abs(amount))
+	raymond.RegisterHelper("coalesce", func(args ...interface{}) raymond.SafeString {
+		// Last argument is always the Handlebars options object, skip it
+		values := args[:len(args)-1]
+		for _, v := range values {
+			if v != nil {
+				switch val := v.(type) {
+				case string:
+					if val != "" {
+						return raymond.SafeString(val)
+					}
+				case *string:
+					if val != nil && *val != "" {
+						return raymond.SafeString(*val)
+					}
+				default:
+					// For non-string types, return if not nil
+					return raymond.SafeString(fmt.Sprintf("%v", val))
+				}
+			}
+		}
+		return raymond.SafeString("")
 	})
 
-	raymond.RegisterHelper("format_table_amount", func(row any) string {
+	raymond.RegisterHelper("format_currency", func(amount float64) raymond.SafeString {
+		return raymond.SafeString(fmt.Sprintf("$%.2f", math.Abs(amount)))
+	})
+
+	raymond.RegisterHelper("format_table_amount", func(row any) raymond.SafeString {
 		m, ok := row.(map[string]any)
 		if !ok {
 			if m2, ok2 := row.(map[string]interface{}); ok2 {
 				m = m2
 			} else {
-				return ""
+				return raymond.SafeString("")
 			}
 		}
 		amount := toFloat64(m["amount"])
 		formatted := fmt.Sprintf("$%.2f", math.Abs(amount))
 		if neg, _ := m["is_negative"].(bool); neg {
-			return fmt.Sprintf("(%s)", formatted)
+			return raymond.SafeString(fmt.Sprintf("(%s)", formatted))
 		}
-		return formatted
+		return raymond.SafeString(formatted)
 	})
 }

@@ -444,7 +444,7 @@ func (r *Repository) UpsertSections(ctx context.Context, tx *sqlx.Tx, invoiceID 
 				section.InvoiceID = &invoiceID
 			}
 
-			if section.InvoiceSection == "" {
+			if section.InvoiceSection == nil || *section.InvoiceSection == "" {
 				return fmt.Errorf("failed to create new section: field 'section_type' cannot be empty for new records")
 			}
 
@@ -458,7 +458,7 @@ func (r *Repository) UpsertSections(ctx context.Context, tx *sqlx.Tx, invoiceID 
 			`, section.ID).StructScan(&dbSection)
 
 			if err == nil {
-				if section.InvoiceSection == "" {
+				if section.InvoiceSection == nil || *section.InvoiceSection == "" {
 					section.InvoiceSection = dbSection.InvoiceSection
 				}
 				if section.InvoiceID == nil {
@@ -488,7 +488,7 @@ func (r *Repository) UpsertSections(ctx context.Context, tx *sqlx.Tx, invoiceID 
 					section.InvoiceID = &invoiceID
 				}
 
-				if section.InvoiceSection == "" {
+				if section.InvoiceSection == nil || *section.InvoiceSection == "" {
 					return fmt.Errorf("failed to create section with ID %s: 'section_type' is a required enum value and cannot be blank", section.ID)
 				}
 

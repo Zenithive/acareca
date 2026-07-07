@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/iamarpitzala/acareca/internal/modules/file"
+	"github.com/iamarpitzala/acareca/internal/shared/common"
 )
 
 const (
@@ -313,22 +313,22 @@ type RsToken struct {
 }
 
 type RsClinic struct {
-	ID          uuid.UUID        `json:"id"`
-	ClinicName  string           `json:"clinic_name"`
-	Description *string          `json:"description,omitempty"`
-	Email       string           `json:"email"`
-	Role        *string          `json:"role"`
-	Verified    bool             `json:"verified"`
-	Document    *file.RsDocument `json:"document,omitempty"`
-	ABN         *string          `json:"abn,omitempty"`
-	ACN         *string          `json:"acn,omitempty"`
-	Addresses   []RsAddress      `json:"addresses"`
-	Contacts    []RsContact      `json:"contacts"`
-	CreatedAt   time.Time        `json:"created_at"`
-	UpdatedAt   *time.Time       `json:"updated_at,omitempty"`
+	ID          uuid.UUID          `json:"id"`
+	ClinicName  string             `json:"clinic_name"`
+	Description *string            `json:"description,omitempty"`
+	Email       string             `json:"email"`
+	Role        *string            `json:"role"`
+	Verified    bool               `json:"verified"`
+	Document    *common.RsDocument `json:"document,omitempty"`
+	ABN         *string            `json:"abn,omitempty"`
+	ACN         *string            `json:"acn,omitempty"`
+	Addresses   []RsAddress        `json:"addresses"`
+	Contacts    []RsContact        `json:"contacts"`
+	CreatedAt   time.Time          `json:"created_at"`
+	UpdatedAt   *time.Time         `json:"updated_at,omitempty"`
 }
 
-func (c *Clinic) MapToRs(addresses []Address, contacts []Contact, document *file.RsDocument) RsClinic {
+func (c *Clinic) MapToRs(addresses []Address, contacts []Contact, document *common.RsDocument) RsClinic {
 	rsAddresses := make([]RsAddress, 0, len(addresses))
 	for _, a := range addresses {
 		rsAddresses = append(rsAddresses, a.MapToRs())

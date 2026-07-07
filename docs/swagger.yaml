@@ -814,7 +814,7 @@ definitions:
       description:
         type: string
       document:
-        $ref: '#/definitions/file.RsDocument'
+        $ref: '#/definitions/common.RsDocument'
       email:
         type: string
       id:
@@ -859,7 +859,7 @@ definitions:
       created_at:
         type: string
       document:
-        $ref: '#/definitions/file.RsDocument'
+        $ref: '#/definitions/common.RsDocument'
       email:
         type: string
       entity_name:
@@ -1421,7 +1421,7 @@ definitions:
       description:
         type: string
       document:
-        $ref: '#/definitions/file.RsDocument'
+        $ref: '#/definitions/common.RsDocument'
       financial_settings:
         $ref: '#/definitions/clinic.RsFinancialSettings'
       id:
@@ -1618,6 +1618,201 @@ definitions:
     properties:
       is_unique:
         type: boolean
+    type: object
+  common.InvContact:
+    properties:
+      abn:
+        type: string
+      address:
+        items:
+          type: string
+        type: array
+      email:
+        type: string
+      fname:
+        type: string
+      id:
+        type: string
+      lname:
+        type: string
+      phone:
+        type: string
+    type: object
+  common.Invoice:
+    properties:
+      accent_color:
+        type: string
+      amount_in_words:
+        type: string
+      bill_from:
+        $ref: '#/definitions/common.InvContact'
+      bill_to:
+        $ref: '#/definitions/common.InvContact'
+      billing_period:
+        type: string
+      body_font_family:
+        type: string
+      clinic_name:
+        type: string
+      custom_fee_rate:
+        type: string
+      custom_fee_rate_display:
+        description: Tax Invoice fee rate display (e.g. "38.5%")
+        type: string
+      custom_payment_account:
+        type: string
+      custom_payment_account_name:
+        type: string
+      custom_payment_bsb:
+        type: string
+      custom_payment_method:
+        type: string
+      due_date_display:
+        type: string
+      grand_total:
+        type: number
+      has_attachments:
+        type: boolean
+      header_font_family:
+        type: string
+      invoice_frequency:
+        type: string
+      invoice_number:
+        type: string
+      issue_date_display:
+        type: string
+      items:
+        items:
+          $ref: '#/definitions/common.LineItem'
+        type: array
+      logo_initial:
+        type: string
+      logo_url:
+        type: string
+      notes:
+        type: string
+      patient_fee_items:
+        description: Calculation Sheet Collections
+        items:
+          additionalProperties: true
+          type: object
+        type: array
+      payment_date_display:
+        type: string
+      payment_method_label:
+        type: string
+      primary_color:
+        description: Exported styling fields targetable by structural assignments
+        type: string
+      remittance_items:
+        description: Remittance Advice Collections
+        items:
+          additionalProperties: true
+          type: object
+        type: array
+      service_description_items:
+        items:
+          type: string
+        type: array
+      service_fee_items:
+        items:
+          additionalProperties: true
+          type: object
+        type: array
+      service_fee_rate_intro:
+        additionalProperties: true
+        type: object
+      settlement_items:
+        items:
+          additionalProperties: true
+          type: object
+        type: array
+      show_logo:
+        type: boolean
+      show_logo_image:
+        type: boolean
+      subtotal:
+        type: number
+      table_style_class:
+        type: string
+      tax_invoice_items:
+        description: Tax Invoice Collections
+        items:
+          additionalProperties: true
+          type: object
+        type: array
+      tax_total:
+        type: number
+      template_settings:
+        additionalProperties: true
+        type: object
+      terms_text:
+        type: string
+      totals_amounts_caption:
+        type: string
+      totals_grand_label:
+        type: string
+      watermark_enabled:
+        type: boolean
+      watermark_text:
+        type: string
+    type: object
+  common.LineItem:
+    properties:
+      amount:
+        type: number
+      description:
+        type: string
+      name:
+        type: string
+      running_total:
+        type: number
+    type: object
+  common.RsDocument:
+    properties:
+      created_at:
+        type: string
+      file_key:
+        type: string
+      id:
+        type: string
+      original_name:
+        type: string
+      uploaded_at:
+        type: string
+    type: object
+  common.RsSetting:
+    properties:
+      accent_color:
+        type: string
+      body_font_family:
+        type: string
+      created_at:
+        type: string
+      header_font_family:
+        type: string
+      id:
+        type: string
+      invoice_id:
+        type: string
+      is_logo:
+        type: boolean
+      is_water_mark:
+        type: boolean
+      logo:
+        $ref: '#/definitions/common.RsDocument'
+      payment_terms:
+        type: string
+      primary_color:
+        type: string
+      table_style:
+        type: string
+      term_text:
+        type: string
+      updated_at:
+        type: string
+      water_mark_text:
+        type: string
     type: object
   contact.RqAddress:
     properties:
@@ -2010,24 +2205,11 @@ definitions:
       original_name:
         type: string
     type: object
-  file.RsDocument:
-    properties:
-      created_at:
-        type: string
-      file_key:
-        type: string
-      id:
-        type: string
-      original_name:
-        type: string
-      uploaded_at:
-        type: string
-    type: object
   file.RsListDocuments:
     properties:
       documents:
         items:
-          $ref: '#/definitions/file.RsDocument'
+          $ref: '#/definitions/common.RsDocument'
         type: array
     type: object
   file.RsPresignedUploadURL:
@@ -3037,10 +3219,6 @@ definitions:
         - INCLUSIVE
         - EXCLUSIVE
         - NO_TAX
-      templateId:
-        type: string
-    required:
-    - documentNumber
     type: object
   section.RqUpdateSection:
     properties:
@@ -3077,8 +3255,6 @@ definitions:
         - INCLUSIVE
         - EXCLUSIVE
         - NO_TAX
-      templateId:
-        type: string
     type: object
   section.RsSection:
     properties:
@@ -3108,16 +3284,14 @@ definitions:
         type: array
       taxMethod:
         $ref: '#/definitions/section.TaxMethod'
-      templateId:
-        type: string
       updatedAt:
         type: string
     type: object
   section.SectionType:
     enum:
     - CALCULATION_STATEMENT
-    - TAX_INVOICE
-    - REMITTANCE_ADVICE
+    - SFA_INVOICE
+    - REMITTANCE_INVOICE
     - RCTI
     type: string
     x-enum-varnames:
@@ -3289,160 +3463,6 @@ definitions:
     - StatusPaused
     - StatusExpired
     - StatusInactive
-  template.Attachment:
-    properties:
-      file_name:
-        type: string
-    type: object
-  template.InvoiceData:
-    properties:
-      accent_color:
-        type: string
-      amount_in_words:
-        type: string
-      attachments:
-        items:
-          $ref: '#/definitions/template.Attachment'
-        type: array
-      bill_from:
-        $ref: '#/definitions/template.PartyInfo'
-      bill_to:
-        $ref: '#/definitions/template.PartyInfo'
-      billing_period:
-        type: string
-      body_font_family:
-        type: string
-      clinic_name:
-        type: string
-      custom_fee_rate:
-        type: string
-      custom_fee_rate_display:
-        description: Tax Invoice fee rate display (e.g. "38.5%")
-        type: string
-      custom_payment_account:
-        type: string
-      custom_payment_account_name:
-        type: string
-      custom_payment_bsb:
-        type: string
-      custom_payment_method:
-        type: string
-      due_date_display:
-        type: string
-      grand_total:
-        type: number
-      has_attachments:
-        type: boolean
-      header_font_family:
-        type: string
-      invoice_frequency:
-        type: string
-      invoice_number:
-        type: string
-      issue_date_display:
-        type: string
-      items:
-        items:
-          $ref: '#/definitions/template.LineItem'
-        type: array
-      logo_initial:
-        type: string
-      logo_url:
-        type: string
-      notes:
-        type: string
-      patient_fee_items:
-        description: Calculation Sheet Collections
-        items:
-          additionalProperties: true
-          type: object
-        type: array
-      payment_date_display:
-        type: string
-      payment_method_label:
-        type: string
-      primary_color:
-        description: Exported styling fields targetable by structural assignments
-        type: string
-      remittance_items:
-        description: Remittance Advice Collections
-        items:
-          additionalProperties: true
-          type: object
-        type: array
-      service_description_items:
-        items:
-          type: string
-        type: array
-      service_fee_items:
-        items:
-          additionalProperties: true
-          type: object
-        type: array
-      service_fee_rate_intro:
-        additionalProperties: true
-        type: object
-      settlement_items:
-        items:
-          additionalProperties: true
-          type: object
-        type: array
-      show_logo:
-        type: boolean
-      show_logo_image:
-        type: boolean
-      subtotal:
-        type: number
-      table_style_class:
-        type: string
-      tax_invoice_items:
-        description: Tax Invoice Collections
-        items:
-          additionalProperties: true
-          type: object
-        type: array
-      tax_total:
-        type: number
-      template_settings:
-        additionalProperties: true
-        type: object
-      terms_text:
-        type: string
-      totals_amounts_caption:
-        type: string
-      totals_grand_label:
-        type: string
-      watermark_enabled:
-        type: boolean
-      watermark_text:
-        type: string
-    type: object
-  template.LineItem:
-    properties:
-      amount:
-        type: number
-      description:
-        type: string
-      name:
-        type: string
-      running_total:
-        type: number
-    type: object
-  template.PartyInfo:
-    properties:
-      abn:
-        type: string
-      address:
-        type: string
-      email:
-        type: string
-      name:
-        type: string
-      payment_method:
-        type: string
-      phone:
-        type: string
-    type: object
   template.RqGlobalTemplate:
     properties:
       css:
@@ -3487,39 +3507,6 @@ definitions:
       table_style:
         type: string
       term_text:
-        type: string
-      water_mark_text:
-        type: string
-    type: object
-  template.RsSetting:
-    properties:
-      accent_color:
-        type: string
-      body_font_family:
-        type: string
-      created_at:
-        type: string
-      header_font_family:
-        type: string
-      id:
-        type: string
-      invoice_id:
-        type: string
-      is_logo:
-        type: boolean
-      is_water_mark:
-        type: boolean
-      logo:
-        $ref: '#/definitions/file.RsDocument'
-      payment_terms:
-        type: string
-      primary_color:
-        type: string
-      table_style:
-        type: string
-      term_text:
-        type: string
-      updated_at:
         type: string
       water_mark_text:
         type: string
@@ -8488,7 +8475,7 @@ paths:
             - $ref: '#/definitions/response.RsBase'
             - properties:
                 data:
-                  $ref: '#/definitions/file.RsDocument'
+                  $ref: '#/definitions/common.RsDocument'
               type: object
         "400":
           description: Bad Request
@@ -8533,7 +8520,7 @@ paths:
             - $ref: '#/definitions/response.RsBase'
             - properties:
                 data:
-                  $ref: '#/definitions/file.RsDocument'
+                  $ref: '#/definitions/common.RsDocument'
               type: object
         "400":
           description: Bad Request
@@ -10655,7 +10642,7 @@ paths:
         name: request
         required: true
         schema:
-          $ref: '#/definitions/template.InvoiceData'
+          $ref: '#/definitions/common.Invoice'
       produces:
       - application/pdf
       responses:
@@ -10710,7 +10697,7 @@ paths:
         "200":
           description: Settings modified context mapping properties updated cleanly
           schema:
-            $ref: '#/definitions/template.RsSetting'
+            $ref: '#/definitions/common.RsSetting'
         "400":
           description: Validation failure errors
           schema:
@@ -10743,7 +10730,7 @@ paths:
         "200":
           description: Resolved style settings specifications model payload
           schema:
-            $ref: '#/definitions/template.RsSetting'
+            $ref: '#/definitions/common.RsSetting'
         "400":
           description: Invalid parameters profile lookup request values
           schema:

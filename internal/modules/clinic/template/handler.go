@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/iamarpitzala/acareca/internal/shared/response"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
@@ -39,10 +40,10 @@ func NewHandler(svc IService) IHandler {
 // @Tags         Templates
 // @Accept       json
 // @Produce      json
-// @Param        request  body      RqGlobalTemplate  true  "Global Template Schema Payload"
-// @Success      201      {object}  RsTemplate        "Global template created successfully"
-// @Failure      400      {object}  map[string]string "Invalid request JSON payload"
-// @Failure      500      {object}  map[string]string "Internal Server Error"
+// @Param        request  body      RqGlobalTemplate       true  "Global Template Schema Payload"
+// @Success      201      {object}  template.RsTemplate    "Global template created successfully"
+// @Failure      400      {object}  map[string]string      "Invalid request JSON payload"
+// @Failure      500      {object}  map[string]string      "Internal Server Error"
 // @Security BearerToken
 // @Router       /templates [post]
 func (h *Handler) Create(c *gin.Context) {
@@ -65,11 +66,11 @@ func (h *Handler) Create(c *gin.Context) {
 // @Tags         Templates
 // @Accept       json
 // @Produce      json
-// @Param        id       path      string            true  "Template UUID ID"
-// @Param        request  body      RqGlobalTemplate  true  "Updated Configuration Payload"
-// @Success      200      {object}  RsTemplate        "Template updated successfully!"
-// @Failure      400      {object}  map[string]string "Invalid Request parameters"
-// @Failure      500      {object}  map[string]string "Internal Server Error"
+// @Param        id       path      string                 true  "Template UUID ID"
+// @Param        request  body      RqGlobalTemplate       true  "Updated Configuration Payload"
+// @Success      200      {object}  template.RsTemplate    "Template updated successfully!"
+// @Failure      400      {object}  map[string]string      "Invalid Request parameters"
+// @Failure      500      {object}  map[string]string      "Internal Server Error"
 // @Security BearerToken
 // @Router       /templates/{id} [put]
 func (h *Handler) Update(c *gin.Context) {
@@ -121,11 +122,11 @@ func (h *Handler) Delete(c *gin.Context) {
 // @Description  Returns the decoupled layout configuration values for a designated template ID
 // @Tags         Templates
 // @Produce      json
-// @Param        id   path      string      true  "Template UUID ID"
-// @Success      200  {object}  RsTemplate  "Success payload containing raw blueprint configurations"
-// @Failure      400  {object}  map[string]string "Invalid configuration criteria identifier"
-// @Failure      404  {object}  map[string]string "Target document or template context completely absent"
-// @Failure      500  {object}  map[string]string "Internal Server Error"
+// @Param        id   path      string                 true  "Template UUID ID"
+// @Success      200  {object}  template.RsTemplate    "Success payload containing raw blueprint configurations"
+// @Failure      400  {object}  map[string]string      "Invalid configuration criteria identifier"
+// @Failure      404  {object}  map[string]string      "Target document or template context completely absent"
+// @Failure      500  {object}  map[string]string      "Internal Server Error"
 // @Security BearerToken
 // @Router       /templates/{id} [get]
 func (h *Handler) Get(c *gin.Context) {
@@ -173,10 +174,10 @@ func (h *Handler) List(c *gin.Context) {
 // @Description  Queries UI visual presets prioritizing custom invoice overrides, falling back to global defaults automatically
 // @Tags         Templates
 // @Produce      json
-// @Param        invoiceId   query     string     false  "Invoice ID (blank for global system defaults)"
-// @Success      200  {object}  RsSetting "Resolved style settings specifications model payload"
-// @Failure      400  {object}  map[string]string "Invalid parameters profile lookup request values"
-// @Failure      500  {object}  map[string]string "Internal Server Error"
+// @Param        invoiceId   query     string                false  "Invoice ID (blank for global system defaults)"
+// @Success      200  {object}  common.RsSetting        "Resolved style settings specifications model payload"
+// @Failure      400  {object}  map[string]string       "Invalid parameters profile lookup request values"
+// @Failure      500  {object}  map[string]string       "Internal Server Error"
 // @Security BearerToken
 // @Router       /templates/invoice-settings [get]
 func (h *Handler) GetInvoiceSetting(c *gin.Context) {
@@ -215,11 +216,11 @@ func (h *Handler) GetInvoiceSetting(c *gin.Context) {
 // @Tags         Templates
 // @Accept       json
 // @Produce      json
-// @Param        id       path      string           true  "Invoice ID"
-// @Param        request  body      RqUpdateSetting  true  "Updated Layout Target Settings"
-// @Success      200      {object}  RsSetting        "Settings modified context mapping properties updated cleanly"
-// @Failure      400      {object}  map[string]string "Validation failure errors"
-// @Failure      500      {object}  map[string]string "Internal Server Error"
+// @Param        id       path      string                  true  "Invoice ID"
+// @Param        request  body      RqUpdateSetting         true  "Updated Layout Target Settings"
+// @Success      200      {object}  common.RsSetting        "Settings modified context mapping properties updated cleanly"
+// @Failure      400      {object}  map[string]string       "Validation failure errors"
+// @Failure      500      {object}  map[string]string       "Internal Server Error"
 // @Security BearerToken
 // @Router       /templates/{id}/settings [put]
 func (h *Handler) UpdateSetting(c *gin.Context) {
@@ -248,12 +249,12 @@ func (h *Handler) UpdateSetting(c *gin.Context) {
 // @Tags         Templates
 // @Accept       json
 // @Produce      application/pdf
-// @Param        id       path      string       true  "Template UUID ID"
-// @Param        request  body      InvoiceData  true  "Dynamic structural template values variables"
-// @Success      200      {file}    string       "application/pdf Binary context stream"
-// @Failure      400      {object}  map[string]string "Context assignment mapping values parsing discrepancies"
-// @Failure      404      {object}  map[string]string "Target document base unavailable"
-// @Failure      500      {object}  map[string]string "Internal Server Error"
+// @Param        id       path      string              true  "Template UUID ID"
+// @Param        request  body      common.Invoice      true  "Dynamic structural template values variables"
+// @Success      200      {file}    string              "application/pdf Binary context stream"
+// @Failure      400      {object}  map[string]string   "Context assignment mapping values parsing discrepancies"
+// @Failure      404      {object}  map[string]string   "Target document base unavailable"
+// @Failure      500      {object}  map[string]string   "Internal Server Error"
 // @Security BearerToken
 // @Router       /templates/{id}/preview-pdf [post]
 func (h *Handler) GeneratePDF(c *gin.Context) {
@@ -268,7 +269,7 @@ func (h *Handler) GeneratePDF(c *gin.Context) {
 		return
 	}
 
-	var data InvoiceData
+	var data common.Invoice
 	if err := c.ShouldBindJSON(&data); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
