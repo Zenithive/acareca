@@ -78,7 +78,7 @@ func MethodBDentistCollectConfig() BillingMethodView {
 func MethodCIndependentContractorConfig() BillingMethodView {
 	return BillingMethodView{
 		PatientFeesLabel:       "1. PATIENT FEES COLLECTED ON YOUR BEHALF",
-		ServiceFeeSectionLabel: "2. DENTIST COMMISSION (Independent Contractor)",
+		ServiceFeeSectionLabel: "4. DENTIST COMMISSION (Independent Contractor)",
 		RateLabel:              "Commission rate",
 		TaxInvoiceIntro:        "Professional dental services for the period {{billing_period}}, remunerated at the agreed commission rate on net patient fees.",
 		HideFeeRate:            true,

@@ -20,6 +20,6 @@ type IService interface {
 	UpdateSetting(ctx context.Context, rq RqUpdateSetting) (*common.RsSetting, error)
 	GeneratePDF(ctx context.Context, rq RqGeneratePDF) ([]byte, error)
 	GenerateMultiPDF(ctx context.Context, templateIds []uuid.UUID, data common.Invoice) ([]byte, error)
-	DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateIds []uuid.UUID, invoiceId uuid.UUID) ([]byte, string, error)
+	DownloadPDF(ctx context.Context, clinicId uuid.UUID, invoiceId uuid.UUID) ([]byte, string, error)
 	BulkSyncDefaults(ctx context.Context) error
 }

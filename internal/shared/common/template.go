@@ -303,6 +303,7 @@ type InvoiceRow struct {
 }
 
 type Invoice struct {
+	Id                   uuid.UUID              `json:"invoice_id"`
 	InvoiceNumber        string                 `json:"invoice_number"`
 	ClinicName           string                 `json:"clinic_name"`
 	IssueDateDisplay     string                 `json:"issue_date_display"`

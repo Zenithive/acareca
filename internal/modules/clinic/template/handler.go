@@ -295,11 +295,10 @@ func (h *Handler) GeneratePDF(c *gin.Context) {
 
 // DownloadPDF resolves an actual database entity context to download a generated PDF statement
 // @Summary      Download Compiled Invoice PDF
-// @Description  Queries static database invoice documents, evaluates values natively against dynamic parameters, and streams a file binary response
+// @Description  Queries the invoice record, resolves the template sequence from its billing method type, and streams the compiled PDF
 // @Tags         Templates
 // @Produce      application/pdf
 // @Param        invoice_id  path      string  true  "Target Invoice Entity Context Index UUID"
-// @Param        templateId  query     string  true  "Template UUID ID (can be repeated for multiple templates)"
 // @Success      200         {file}    string  "Target invoice document byte stream file object matches"
 // @Failure      400         {object}  map[string]string "Target routing value errors or profile validation flaws"
 // @Failure      404         {object}  map[string]string "Target entities unavailable"
@@ -319,30 +318,7 @@ func (h *Handler) DownloadPDF(c *gin.Context) {
 		return
 	}
 
-	rawIds := c.QueryArray("templateId")
-	if len(rawIds) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "missing templateId query parameter"})
-		return
-	}
-
-	// Limit template IDs to prevent abuse
-	const maxTemplateIds = 10
-	if len(rawIds) > maxTemplateIds {
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("too many template IDs provided, maximum is %d", maxTemplateIds)})
-		return
-	}
-
-	templateIds := make([]uuid.UUID, 0, len(rawIds))
-	for _, raw := range rawIds {
-		id, err := uuid.Parse(raw)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid templateId: " + raw})
-			return
-		}
-		templateIds = append(templateIds, id)
-	}
-
-	pdf, filename, err := h.svc.DownloadPDF(c.Request.Context(), clinicId, templateIds, invoiceId)
+	pdf, filename, err := h.svc.DownloadPDF(c.Request.Context(), clinicId, invoiceId)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
 			response.Error(c, http.StatusNotFound, err)

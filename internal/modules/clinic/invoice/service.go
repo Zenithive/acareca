@@ -282,9 +282,7 @@ func (s *Service) ResendInvoiceEmail(ctx context.Context, id uuid.UUID) error {
 }
 
 func (s *Service) compileInvoicePDF(ctx context.Context, inv *RsInvoice) (string, error) {
-	templateIDs := make([]uuid.UUID, 0, len(inv.Sections))
-
-	pdfBytes, _, err := s.tplService.DownloadPDF(ctx, inv.ClinicID, templateIDs, inv.ID)
+	pdfBytes, _, err := s.tplService.DownloadPDF(ctx, inv.ClinicID, inv.ID)
 	if err != nil {
 		return "", fmt.Errorf("failed calling shared uniform download method engine: %w", err)
 	}
