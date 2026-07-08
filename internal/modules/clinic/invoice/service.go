@@ -78,6 +78,15 @@ func (s *Service) Create(ctx context.Context, invoice *RqInvoice) error {
 	sections := make([]section.Section, 0, len(invoice.Sections))
 	for _, rqSec := range invoice.Sections {
 		sec := rqSec.ToSection()
+		// Push invoice-level payment fields into each section so they reach the DB.
+		// ToInvoice() sets them on inv.Sections but the repo.Create uses inv directly,
+		// while formula evaluation uses this separate sections slice — keep them in sync.
+		if invoice.PaymentDate != nil && sec.PaymentDate == nil {
+			sec.PaymentDate = invoice.PaymentDate
+		}
+		if invoice.PaymentReference != nil && sec.PaymentReference == nil {
+			sec.PaymentReference = invoice.PaymentReference
+		}
 		sections = append(sections, *sec)
 	}
 
@@ -184,6 +193,14 @@ func (s *Service) Update(ctx context.Context, invoice *RqUpdateInvoice) error {
 	for _, rqSec := range invoice.Sections {
 		sec := rqSec.ToSection()
 		sec.InvoiceID = invoice.ID
+		// Push invoice-level payment fields into each section so they reach the DB
+		// via UpdateWithSections → UpsertSections → updateSection.
+		if invoice.PaymentDate != nil && sec.PaymentDate == nil {
+			sec.PaymentDate = invoice.PaymentDate
+		}
+		if invoice.PaymentReference != nil && sec.PaymentReference == nil {
+			sec.PaymentReference = invoice.PaymentReference
+		}
 		sections = append(sections, *sec)
 
 		if len(rqSec.DeleteEntries) > 0 {

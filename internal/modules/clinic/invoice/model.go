@@ -25,6 +25,8 @@ type RqInvoice struct {
 	DueDate           *string             `json:"dueDate,omitempty" validate:"omitempty"`
 	InvoiceMethod     *util.InvoiceType   `json:"invoiceMethod,omitempty" validate:"omitempty,oneof=SFA_CLINIC_COLLECTS SFA_DENTIST_COLLECTS INDEPENDENT_CONTRACTOR"`
 	Status            *string             `json:"status"`
+	PaymentDate       *string             `json:"paymentDate,omitempty"`
+	PaymentReference  *string             `json:"paymentReference,omitempty"`
 	Sections          []section.RqSection `json:"sections,omitempty" validate:"omitempty,dive"`
 	Settings          *RqInvoiceSetting   `json:"settings,omitempty"`
 }
@@ -68,6 +70,15 @@ func (r *RqInvoice) ToInvoice() *Invoice {
 		if sec.InvoiceID == nil {
 			sec.InvoiceID = &invoiceID
 		}
+		// Push invoice-level paymentDate/paymentReference into each section
+		// so they are stored in tbl_map_invoice_section regardless of which
+		// section the frontend considers the "payment" section.
+		if r.PaymentDate != nil && sec.PaymentDate == nil {
+			sec.PaymentDate = r.PaymentDate
+		}
+		if r.PaymentReference != nil && sec.PaymentReference == nil {
+			sec.PaymentReference = r.PaymentReference
+		}
 		sections = append(sections, *sec)
 	}
 
@@ -100,6 +111,8 @@ type RqUpdateInvoice struct {
 	DueDate           *string                   `json:"dueDate,omitempty" validate:"omitempty,datetime=2006-01-02"`
 	InvoiceMethod     *util.InvoiceType         `json:"invoiceMethod,omitempty" validate:"omitempty,oneof=SFA_CLINIC_COLLECTS SFA_DENTIST_COLLECTS INDEPENDENT_CONTRACTOR"`
 	Status            *string                   `json:"status,omitempty"`
+	PaymentDate       *string                   `json:"paymentDate,omitempty"`
+	PaymentReference  *string                   `json:"paymentReference,omitempty"`
 	Sections          []section.RqUpdateSection `json:"sections,omitempty" validate:"omitempty,dive"`
 	DeleteSections    []uuid.UUID               `json:"deleteSections,omitempty"`
 	AttachmentBase64  string                    `json:"attachmentBase64,omitempty"`
@@ -165,6 +178,21 @@ func (r *RqUpdateInvoice) ApplyToInvoice(inv *Invoice) *Invoice {
 						existingEntryMap[e.ID] = e
 					}
 
+					// If the incoming payload explicitly sets is_final=true on any entry,
+					// clear is_final on ALL existing entries first so only one can be true.
+					incomingHasFinal := false
+					for _, rqEntry := range rqSec.Entries {
+						if rqEntry.IsFinal != nil && *rqEntry.IsFinal {
+							incomingHasFinal = true
+							break
+						}
+					}
+					if incomingHasFinal {
+						for _, e := range existingEntryMap {
+							e.IsFinal = false
+						}
+					}
+
 					for idx, entry := range sec.Entries {
 						if existingEntry, ok := existingEntryMap[entry.ID]; ok && entry.ID != uuid.Nil {
 							rqEntry := rqSec.Entries[idx]
@@ -215,6 +243,19 @@ func (r *RqUpdateInvoice) ApplyToInvoice(inv *Invoice) *Invoice {
 		inv.Sections = sections
 	}
 
+	// Push invoice-level paymentDate/paymentReference into sections for update too.
+	// Only applies to sections that don't already have them explicitly set.
+	if r.PaymentDate != nil || r.PaymentReference != nil {
+		for i := range inv.Sections {
+			if r.PaymentDate != nil && inv.Sections[i].PaymentDate == nil {
+				inv.Sections[i].PaymentDate = r.PaymentDate
+			}
+			if r.PaymentReference != nil && inv.Sections[i].PaymentReference == nil {
+				inv.Sections[i].PaymentReference = r.PaymentReference
+			}
+		}
+	}
+
 	if r.Settings != nil {
 		inv.Settings = r.Settings
 	}
@@ -234,6 +275,8 @@ type Invoice struct {
 	IssueDate         time.Time         `db:"issue_date"`
 	DueDate           *time.Time        `db:"due_date,omitempty"`
 	Status            *string           `db:"status"`
+	PaymentDate       *string           `db:"-"`
+	PaymentReference  *string           `db:"-"`
 	ContactTo         *contact.Contact  `db:"-"`
 	Sections          []section.Section `db:"-"`
 	Settings          *RqInvoiceSetting `db:"-"`
@@ -261,6 +304,8 @@ func (i *Invoice) ToRsInvoiceSummary() *RsInvoiceSummary {
 		IssueDate:         i.IssueDate,
 		DueDate:           i.DueDate,
 		Status:            i.Status,
+		PaymentDate:       i.PaymentDate,
+		PaymentReference:  i.PaymentReference,
 		CreatedAt:         i.CreatedAt,
 		UpdatedAt:         i.UpdatedAt,
 	}
@@ -287,6 +332,18 @@ func (i *Invoice) ToRsInvoice() *RsInvoice {
 		rsSection = append(rsSection, *v.ToRsSection())
 	}
 
+	// Hoist payment_date and payment_reference up to invoice level.
+	// These fields live on the REMITTANCE_INVOICE section in the DB;
+	// we surface them at the top level so callers don't have to dig into sections.
+	var paymentDate, paymentReference *string
+	for _, sec := range i.Sections {
+		if sec.PaymentDate != nil || sec.PaymentReference != nil {
+			paymentDate = sec.PaymentDate
+			paymentReference = sec.PaymentReference
+			break
+		}
+	}
+
 	return &RsInvoice{
 		ID:                i.ID,
 		ClinicID:          i.ClinicID,
@@ -301,6 +358,8 @@ func (i *Invoice) ToRsInvoice() *RsInvoice {
 		Status:            i.Status,
 		Sections:          rsSection,
 		InvoiceMethod:     i.InvoiceMethod,
+		PaymentDate:       paymentDate,
+		PaymentReference:  paymentReference,
 		CreatedAt:         i.CreatedAt,
 		UpdatedAt:         i.UpdatedAt,
 	}
@@ -319,6 +378,8 @@ type RsInvoiceSummary struct {
 	IssueDate         time.Time          `json:"issueDate"`
 	DueDate           *time.Time         `json:"dueDate,omitempty"`
 	Status            *string            `json:"status"`
+	PaymentDate       *string            `json:"paymentDate,omitempty"`
+	PaymentReference  *string            `json:"paymentReference,omitempty"`
 	CreatedAt         time.Time          `json:"createdAt"`
 	UpdatedAt         *time.Time         `json:"updatedAt"`
 }
@@ -336,6 +397,8 @@ type RsInvoice struct {
 	DueDate           *time.Time          `json:"dueDate,omitempty"`
 	Status            *string             `json:"status"`
 	InvoiceMethod     *util.InvoiceType   `json:"invoiceMethod,omitempty"`
+	PaymentDate       *string             `json:"paymentDate,omitempty"`
+	PaymentReference  *string             `json:"paymentReference,omitempty"`
 	Sections          []section.RsSection `json:"sections,omitempty"`
 	CreatedAt         time.Time           `json:"createdAt"`
 	UpdatedAt         *time.Time          `json:"updatedAt"`
