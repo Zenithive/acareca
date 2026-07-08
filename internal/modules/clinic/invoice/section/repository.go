@@ -483,6 +483,18 @@ func (r *Repository) UpsertSections(ctx context.Context, tx *sqlx.Tx, invoiceID 
 						return fmt.Errorf("failed to upsert items for section %s: %w", section.ID, err)
 					}
 				}
+
+				// Recurse into child sections
+				if len(section.Sections) > 0 {
+					childSections := make([]Section, 0, len(section.Sections))
+					for _, child := range section.Sections {
+						childSections = append(childSections, *child)
+					}
+					if err := r.UpsertSections(ctx, tx, invoiceID, childSections, nil, deleteItemIDs); err != nil {
+						return fmt.Errorf("failed to upsert child sections for %s: %w", section.ID, err)
+					}
+				}
+
 			} else if errors.Is(err, sql.ErrNoRows) {
 				if section.InvoiceID == nil {
 					section.InvoiceID = &invoiceID
@@ -495,6 +507,18 @@ func (r *Repository) UpsertSections(ctx context.Context, tx *sqlx.Tx, invoiceID 
 				if err := r.Create(ctx, tx, invoiceID, []Section{section}); err != nil {
 					return fmt.Errorf("failed to create section with ID %s: %w", section.ID, err)
 				}
+
+				// Recurse for newly created sections
+				if len(section.Sections) > 0 {
+					childSections := make([]Section, 0, len(section.Sections))
+					for _, child := range section.Sections {
+						childSections = append(childSections, *child)
+					}
+					if err := r.UpsertSections(ctx, tx, invoiceID, childSections, nil, deleteItemIDs); err != nil {
+						return fmt.Errorf("failed to upsert child sections for %s: %w", section.ID, err)
+					}
+				}
+
 			} else {
 				return fmt.Errorf("failed to check section existence structural mappings: %w", err)
 			}
