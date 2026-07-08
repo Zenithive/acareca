@@ -47,18 +47,26 @@ type expressionNode struct {
 	Type  string          `json:"type"`
 	Key   string          `json:"key"`
 	Op    string          `json:"op"`
+	Value interface{}     `json:"value,omitempty"`
 	Left  *expressionNode `json:"left,omitempty"`
 	Right *expressionNode `json:"right,omitempty"`
 }
 
 func parseExpressionString(expression string) string {
-	if strings.TrimSpace(expression) == "" {
+	trimmed := strings.TrimSpace(expression)
+	if trimmed == "" {
 		return ""
 	}
 
+	// If it doesn't look like a JSON object, treat it directly as a raw expression string
+	// Return it immediately without trying to unmarshal it
+	if !strings.HasPrefix(trimmed, "{") || !strings.HasSuffix(trimmed, "}") {
+		return trimmed
+	}
+
 	var node expressionNode
-	if err := json.Unmarshal([]byte(expression), &node); err != nil {
-		return strings.TrimSpace(expression)
+	if err := json.Unmarshal([]byte(trimmed), &node); err != nil {
+		return trimmed
 	}
 
 	return formatExpressionNode(&node)
@@ -72,6 +80,14 @@ func formatExpressionNode(node *expressionNode) string {
 	switch node.Type {
 	case "field":
 		return node.Key
+	case "constant":
+		if node.Value != nil {
+			return fmt.Sprintf("%v", node.Value)
+		}
+		if node.Key != "" {
+			return node.Key
+		}
+		return ""
 	case "operator":
 		left := formatExpressionNode(node.Left)
 		right := formatExpressionNode(node.Right)
@@ -263,8 +279,8 @@ func (r *dbInvoiceReader) GetInvoiceRenderData(ctx context.Context, invoiceId uu
 			it.is_final,
 			COALESCE(it.field_key, '')  AS field_key,
 			it.sort_order,
-			CASE WHEN it.paid_by IS NULL THEN '' ELSE it.paid_by::text END AS paid_by,
-			COALESCE(it.expression, '') AS expression,
+			COALESCE(it.paid_by::text, '') AS paid_by,
+			COALESCE(it.expression::text, '') AS expression,
 			COALESCE(it.description, '') AS description
 		FROM tbl_invoice_item it
 		JOIN tbl_map_invoice_section s
