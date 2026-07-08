@@ -250,17 +250,6 @@ func (r *dbInvoiceReader) GetInvoiceRenderData(ctx context.Context, invoiceId uu
 	}
 	_ = secRows.Err()
 
-	// Ensure structural absolute fallbacks for specific template documents
-	if calculationDocNo == "" {
-		calculationDocNo = invoiceNumber
-	}
-	if taxInvoiceDocNo == "" {
-		taxInvoiceDocNo = invoiceNumber
-	}
-	if remittanceDocNo == "" {
-		remittanceDocNo = invoiceNumber
-	}
-
 	// ── 3. Line items ────────────────────────────────────────────────────────
 	const itemQ = `
 		SELECT
@@ -274,7 +263,7 @@ func (r *dbInvoiceReader) GetInvoiceRenderData(ctx context.Context, invoiceId uu
 			it.is_final,
 			COALESCE(it.field_key, '')  AS field_key,
 			it.sort_order,
-			COALESCE(it.paid_by::text, '') AS paid_by,
+			CASE WHEN it.paid_by IS NULL THEN '' ELSE it.paid_by::text END AS paid_by,
 			COALESCE(it.expression, '') AS expression,
 			COALESCE(it.description, '') AS description
 		FROM tbl_invoice_item it

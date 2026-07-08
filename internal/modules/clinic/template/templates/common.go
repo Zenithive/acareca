@@ -427,7 +427,7 @@ func CSS() string {
   --primary-color: {{coalesce template_settings.primary_color "#1f4e5f"}};
   --accent-color: {{coalesce template_settings.accent_color "#5f96b4"}};
   --text-dark: #000000;
-  --text-blue: #0096FF;
+  --text-blue: #0000FF;
   --pos-green: #007a3d;
   --neg-red: #c50505;
 }

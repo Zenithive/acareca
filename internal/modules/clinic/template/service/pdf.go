@@ -286,33 +286,65 @@ func applySettingsToMap(m map[string]interface{}, st *common.Setting, cfg *confi
 		return
 	}
 
-	ts := map[string]interface{}{
-		"primary_color":      st.PrimaryColor,
-		"accent_color":       st.AccentColor,
-		"body_font_family":   st.BodyFontFamily,
-		"header_font_family": st.HeaderFontFamily,
-		"is_watermark":       st.IsWaterMark,
-		"is_logo":            st.IsLogo,
+	existing, _ := m["template_settings"].(map[string]interface{})
+	if existing == nil {
+		existing = map[string]interface{}{}
+	}
+
+	existing["primary_color"] = st.PrimaryColor
+	existing["accent_color"] = st.AccentColor
+	existing["body_font_family"] = st.BodyFontFamily
+	existing["header_font_family"] = st.HeaderFontFamily
+	existing["is_watermark"] = st.IsWaterMark
+	existing["is_logo"] = st.IsLogo
+
+	// CSS-safe Google Font names (e.g. "Open Sans" -> "Open+Sans")
+	if st.BodyFontFamily != "" {
+		existing["body_font_family_css"] = strings.ReplaceAll(st.BodyFontFamily, " ", "+")
+	}
+	if st.HeaderFontFamily != "" {
+		existing["header_font_family_css"] = strings.ReplaceAll(st.HeaderFontFamily, " ", "+")
 	}
 
 	if st.TableStyle != nil {
-		ts["table_style"] = *st.TableStyle
-		m["table_style_class"] = *st.TableStyle
+		style := strings.ToLower(strings.TrimSpace(*st.TableStyle))
+
+		existing["table_style"] = style
+		m["table_style_class"] = style
+
+		// Backward-compatible template flags
+		m["table_style_bordered"] = false
+		m["table_style_striped"] = false
+
+		switch style {
+		case "bordered":
+			m["table_style_bordered"] = true
+
+		case "striped":
+			m["table_style_striped"] = true
+
+		case "bordered-striped", "striped-bordered":
+			m["table_style_bordered"] = true
+			m["table_style_striped"] = true
+		}
 	}
+
 	if st.TermText != nil {
-		ts["terms_text"] = *st.TermText
+		existing["terms_text"] = *st.TermText
 		m["notes"] = *st.TermText
 	}
+
 	if st.IsWaterMark && st.WaterMarkText != nil {
-		ts["watermark_text"] = *st.WaterMarkText
+		existing["watermark_text"] = *st.WaterMarkText
 		m["watermark_enabled"] = true
 	}
+
 	if st.IsLogo && st.Logo != nil {
 		logoURL := strings.TrimRight(cfg.R2StoragePrefix, "/") + "/" + st.Logo.ToRsDocument().FileKey
-		ts["logo_url"] = logoURL
+		existing["logo_url"] = logoURL
 		m["logo_url"] = logoURL
 		m["show_logo"] = true
 	}
 
-	m["template_settings"] = ts
+	m["template_settings"] = existing
 }
