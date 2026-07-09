@@ -228,11 +228,11 @@ func GenerateExcelReport(data []*RsBalanceSheet, config export.ExportConfig) (*e
 	var dateText string
 	if numYears > 1 {
 		if baseline.EndDate != "" {
-			dateText = fmt.Sprintf("As of %s (with %d Comparative Periods)", baseline.EndDate, numYears)
+			dateText = fmt.Sprintf("As at %s (with %d Comparative Periods)", baseline.EndDate, numYears)
 		}
 	} else {
 		if baseline.EndDate != "" {
-			dateText = fmt.Sprintf("As of %s", baseline.EndDate)
+			dateText = fmt.Sprintf("As at %s", baseline.EndDate)
 		}
 	}
 
