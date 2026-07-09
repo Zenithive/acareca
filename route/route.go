@@ -191,7 +191,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 	equity.RegisterRoutes(v1, equityHandler, cfg)
 
 	bsRepo := bs.NewRepository(dbConn)
-	bsSvc := bs.NewService(bsRepo, equitySvc, dbConn, auditSvc, authRepo, invitationSvc, accountantRepo, practitionerSvc, invitationRepo, authSvc, notificationSvc, adminRepo)
+	bsSvc := bs.NewService(bsRepo, equitySvc, dbConn, auditSvc, authRepo, invitationSvc, accountantRepo, practitionerSvc, invitationRepo, authSvc, notificationSvc, adminRepo, fySvc)
 	bsHandler := bs.NewHandler(bsSvc, invitationSvc)
 	bs.RegisterRoutes(v1, bsHandler, cfg)
 

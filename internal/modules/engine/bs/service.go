@@ -16,6 +16,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/accountant"
 	"github.com/iamarpitzala/acareca/internal/modules/business/admin"
 	"github.com/iamarpitzala/acareca/internal/modules/business/equity"
+	"github.com/iamarpitzala/acareca/internal/modules/business/fy"
 	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
 	"github.com/iamarpitzala/acareca/internal/modules/notification"
@@ -46,9 +47,10 @@ type service struct {
 	notificationPub *sharednotification.Publisher
 	invitationRepo  invitation.Repository
 	authSvc         auth.Service
+	fySvc           fy.Service
 }
 
-func NewService(repo Repository, equitySvc equity.Service, db *sqlx.DB, auditSvc audit.Service, authRepo auth.Repository, invitationSvc invitation.Service, accountantRepo accountant.Repository, practitionerSvc practitioner.IService, invitationRepo invitation.Repository, authSvc auth.Service, notificationSvc notification.Service, adminRepo admin.Repository) Service {
+func NewService(repo Repository, equitySvc equity.Service, db *sqlx.DB, auditSvc audit.Service, authRepo auth.Repository, invitationSvc invitation.Service, accountantRepo accountant.Repository, practitionerSvc practitioner.IService, invitationRepo invitation.Repository, authSvc auth.Service, notificationSvc notification.Service, adminRepo admin.Repository, fySvc fy.Service) Service {
 	return &service{
 		repo:            repo,
 		equitySvc:       equitySvc,
@@ -61,6 +63,7 @@ func NewService(repo Repository, equitySvc equity.Service, db *sqlx.DB, auditSvc
 		notificationPub: sharednotification.NewPublisher(notification.NewServiceAdapter(notificationSvc), adminRepo),
 		invitationRepo:  invitationRepo,
 		authSvc:         authSvc,
+		fySvc:           fySvc,
 	}
 }
 
@@ -102,9 +105,31 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 		}
 	}
 
-	endDate := time.Now().Format("2006-01-02")
+	endDate := ""
 	if f.EndDate != nil && *f.EndDate != "" {
 		endDate = *f.EndDate
+	} else {
+		fys, err := s.fySvc.GetFinancialYears(ctx)
+		if err == nil && fys != nil {
+			for _, item := range fys {
+				if *item.IsActive {
+					if parsedTime, parseErr := time.Parse(time.RFC3339, item.EndDate.String()); parseErr == nil {
+						endDate = parsedTime.Format("2006-01-02")
+						break
+					} else {
+						if len(item.EndDate.String()) >= 10 {
+							endDate = item.EndDate.String()[:10]
+							break
+						}
+					}
+				}
+			}
+		}
+
+		// Fallback to todays date if nothing matched
+		if endDate == "" {
+			endDate = time.Now().Format("2006-01-02")
+		}
 	}
 	f.EndDate = &endDate
 
@@ -312,7 +337,7 @@ func (s *service) ExportBalanceSheet(ctx context.Context, data []*RsBalanceSheet
 
 	var dateText string
 	if baselineData.EndDate != "" {
-		dateText = fmt.Sprintf("As of %s", baselineData.EndDate)
+		dateText = fmt.Sprintf("As at %s", baselineData.EndDate)
 	}
 
 	config := export.ExportConfig{
@@ -509,7 +534,7 @@ func (s *service) notifyReportExport(ctx context.Context, entityID uuid.UUID, ac
 	case util.EventPLReportExport:
 		action = "Exported"
 	default:
-		action = "Updated"
+		action = "Generated"
 	}
 
 	return s.notificationPub.Publish(ctx, sharednotification.PublishRequest{

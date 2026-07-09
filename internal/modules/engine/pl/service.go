@@ -501,7 +501,7 @@ func (s *service) notifyReportExport(ctx context.Context, entityID uuid.UUID, ac
 	case util.EventPLReportExport:
 		action = "Exported"
 	default:
-		action = "Updated"
+		action = "Generated"
 	}
 
 	switch actorType {
@@ -524,7 +524,7 @@ func (s *service) notifyReportExport(ctx context.Context, entityID uuid.UUID, ac
 	case util.ActorAccountant:
 		// Notify only specific practitioners if targetPractitionerIDs is provided
 		var practitionerIDs []uuid.UUID
-		
+
 		if len(targetPractitionerIDs) > 0 {
 			// Use the specific practitioners for whom the report was generated
 			practitionerIDs = targetPractitionerIDs
