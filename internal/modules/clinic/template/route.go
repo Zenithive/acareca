@@ -3,6 +3,8 @@ package template
 import "github.com/gin-gonic/gin"
 
 func RegisterRoutes(rg *gin.RouterGroup, h IHandler, authMiddleware gin.HandlerFunc, roleMiddleware gin.HandlerFunc) {
+	rg.POST("/templates/sync-defaults", h.BulkSyncDefaultsHandler)
+
 	template := rg.Group("/templates", authMiddleware, roleMiddleware)
 
 	template.POST("", h.Create)
@@ -11,7 +13,6 @@ func RegisterRoutes(rg *gin.RouterGroup, h IHandler, authMiddleware gin.HandlerF
 	template.PUT("/:id", h.Update)
 	template.DELETE("/:id", h.Delete)
 
-	template.GET("/:id/settings", h.GetSetting)
 	template.PUT("/:id/settings", h.UpdateSetting)
 
 	template.POST("/:id/preview-pdf", h.GeneratePDF)
@@ -19,5 +20,4 @@ func RegisterRoutes(rg *gin.RouterGroup, h IHandler, authMiddleware gin.HandlerF
 	template.GET("/invoice-settings", h.GetInvoiceSetting)
 	template.GET("/invoices/:invoice_id/download", h.DownloadPDF)
 
-	template.POST("/sync-defaults", h.BulkUpdateDefaultsHandler)
 }

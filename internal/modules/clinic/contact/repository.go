@@ -38,17 +38,9 @@ func (r *repository) Create(ctx context.Context, contact Contact) (Contact, erro
 		_, err := tx.ExecContext(ctx,
 			`
 			INSERT INTO tbl_clinic_contact_person (
-				id,
-				clinic_id,
-				fname,
-				lname,
-				phone,
-				email,
-				website,
-				abn,
-				note
+				id,	clinic_id, fname, lname, phone, email, website, abn, note, role, payment_method, account_name, bsb_number, account_number
 			)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 			`,
 			contact.ID,
 			contact.ClinicId,
@@ -59,6 +51,11 @@ func (r *repository) Create(ctx context.Context, contact Contact) (Contact, erro
 			contact.Website,
 			contact.ABN,
 			contact.Note,
+			contact.Role,
+			contact.PaymentMethod,
+			contact.AccountName,
+			contact.Bsb,
+			contact.AccountNumber,
 		)
 		if err != nil {
 			return err
@@ -178,17 +175,8 @@ func (r *repository) Get(ctx context.Context, id uuid.UUID) (Contact, error) {
 	err := r.db.QueryRowContext(ctx,
 		`
 		SELECT
-			id,
-			clinic_id,
-			fname,
-			lname,
-			COALESCE(phone, ''),
-			email,
-			COALESCE(website, ''),
-			COALESCE(abn, ''),
-			COALESCE(note, ''),
-			created_at,
-			updated_at
+			id, clinic_id, fname, lname, COALESCE(phone, ''), email, COALESCE(website, ''), COALESCE(abn, ''),
+			COALESCE(note, ''), role, payment_method, account_name, bsb_number, account_number, created_at, updated_at
 		FROM tbl_clinic_contact_person
 		WHERE id = $1
 		AND deleted_at IS NULL
@@ -204,6 +192,11 @@ func (r *repository) Get(ctx context.Context, id uuid.UUID) (Contact, error) {
 		&contact.Website,
 		&contact.ABN,
 		&contact.Note,
+		&contact.Role,
+		&contact.PaymentMethod,
+		&contact.AccountName,
+		&contact.Bsb,
+		&contact.AccountNumber,
 		&contact.CreatedAt,
 		&contact.UpdatedAt,
 	)
@@ -279,6 +272,7 @@ func (r *repository) List(ctx context.Context, clinicID uuid.UUID, f common.Filt
 		"email":      "email",
 		"phone":      "phone",
 		"abn":        "abn",
+		"role":       "role",
 		"created_at": "created_at",
 	}
 
@@ -296,7 +290,8 @@ func (r *repository) List(ctx context.Context, clinicID uuid.UUID, f common.Filt
 		return nil, 0, fmt.Errorf("count contacts: %w", err)
 	}
 
-	selectQueryBase := `SELECT id, clinic_id, fname, lname, COALESCE(phone, ''), email, COALESCE(website, ''), COALESCE(abn, ''), COALESCE(note, ''), created_at, updated_at ` + baseQuery
+	selectQueryBase := `SELECT id, clinic_id, fname, lname, COALESCE(phone, ''), email, COALESCE(website, ''), COALESCE(abn, ''), COALESCE(note, ''),
+	role, COALESCE(payment_method, ''), COALESCE(account_name, ''), COALESCE(account_number, ''), COALESCE(bsb_number, ''), created_at, updated_at ` + baseQuery
 	itemsQuery, itemsArgsPart := common.BuildQuery(selectQueryBase, f, allowedColumns, searchCols, false)
 	itemsArgs := append(baseArgs, itemsArgsPart...)
 
@@ -319,6 +314,11 @@ func (r *repository) List(ctx context.Context, clinicID uuid.UUID, f common.Filt
 			&contact.Website,
 			&contact.ABN,
 			&contact.Note,
+			&contact.Role,
+			&contact.PaymentMethod,
+			&contact.AccountName,
+			&contact.AccountNumber,
+			&contact.Bsb,
 			&contact.CreatedAt,
 			&contact.UpdatedAt,
 		)
@@ -352,8 +352,13 @@ func (r *repository) Update(ctx context.Context, contact Contact) error {
 				website = $6,
 				abn = $7,
 				note = $8,
+				role = $9,
+				payment_method = $10,
+				account_name = $11,
+				bsb_number = $12,
+				account_number = $13,
 				updated_at = NOW()
-			WHERE id = $9
+			WHERE id = $14
 			AND deleted_at IS NULL
 			`,
 			contact.ClinicId,
@@ -364,6 +369,11 @@ func (r *repository) Update(ctx context.Context, contact Contact) error {
 			contact.Website,
 			contact.ABN,
 			contact.Note,
+			contact.Role,
+			contact.PaymentMethod,
+			contact.AccountName,
+			contact.Bsb,
+			contact.AccountNumber,
 			contact.ID,
 		)
 		if err != nil {

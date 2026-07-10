@@ -120,3 +120,18 @@ const (
 	EventSubscriptionAlert     NotificationEventType = "subscription.alert"      // subscription created/updated/deleted
 	EventUserRegistrationAlert NotificationEventType = "user.registration.alert" // new practitioner registered
 )
+
+type InvoiceType string
+
+const (
+	InvoiceTypeSFAClinicCollects     InvoiceType = "SFA_CLINIC_COLLECTS"
+	InvoiceTypeSFADentistCollects    InvoiceType = "SFA_DENTIST_COLLECTS"
+	InvoiceTypeIndependentContractor InvoiceType = "INDEPENDENT_CONTRACTOR"
+)
+
+type ClinicContactPersonRole string
+
+const (
+	RoleDentist ClinicContactPersonRole = "DENTIST"
+	RolePatient ClinicContactPersonRole = "PATIENT"
+)

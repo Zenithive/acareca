@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/iamarpitzala/acareca/internal/modules/file"
+	"github.com/iamarpitzala/acareca/internal/shared/common"
 )
 
 type User struct {
@@ -16,7 +16,7 @@ type User struct {
 	Phone     *string   `db:"phone"`
 	Role      string    `db:"role"`
 
-	Document  *file.Document
+	Document  *common.Document
 	CreatedAt time.Time  `db:"created_at"`
 	UpdatedAt time.Time  `db:"updated_at"`
 	DeletedAt *time.Time `db:"deleted_at"`
@@ -126,22 +126,22 @@ type RsToken struct {
 }
 
 type RsUser struct {
-	ID             uuid.UUID        `json:"id"`
-	Email          string           `json:"email"`
-	FirstName      string           `json:"first_name"`
-	LastName       string           `json:"last_name"`
-	Phone          *string          `json:"phone,omitempty"`
-	Role           string           `json:"role"`
-	ABN            *string          `json:"abn,omitempty"`
-	TaxAgentNumber *string          `json:"tax_agent_number,omitempty"`
-	EntityType     string           `json:"entity_type"`
-	EntityName     *string          `json:"entity_name"`
-	ACN            *string          `json:"acn,omitempty"`
-	Address        *string          `json:"address,omitempty"`
-	Profession     *string          `json:"profession,omitempty"`
-	Document       *file.RsDocument `json:"document"`
-	CreatedAt      time.Time        `json:"created_at"`
-	UpdatedAt      time.Time        `json:"updated_at"`
+	ID             uuid.UUID          `json:"id"`
+	Email          string             `json:"email"`
+	FirstName      string             `json:"first_name"`
+	LastName       string             `json:"last_name"`
+	Phone          *string            `json:"phone,omitempty"`
+	Role           string             `json:"role"`
+	ABN            *string            `json:"abn,omitempty"`
+	TaxAgentNumber *string            `json:"tax_agent_number,omitempty"`
+	EntityType     string             `json:"entity_type"`
+	EntityName     *string            `json:"entity_name"`
+	ACN            *string            `json:"acn,omitempty"`
+	Address        *string            `json:"address,omitempty"`
+	Profession     *string            `json:"profession,omitempty"`
+	Document       *common.RsDocument `json:"document"`
+	CreatedAt      time.Time          `json:"created_at"`
+	UpdatedAt      time.Time          `json:"updated_at"`
 }
 
 func (r *RqUser) ToDBModel() *User {
@@ -154,9 +154,9 @@ func (r *RqUser) ToDBModel() *User {
 }
 
 func (u *User) ToRsUser() *RsUser {
-	var doc *file.RsDocument
+	var doc *common.RsDocument
 	if u.Document != nil {
-		doc = &file.RsDocument{
+		doc = &common.RsDocument{
 			ID:           u.Document.ID,
 			OriginalName: u.Document.OriginalName,
 			FileKey:      u.Document.ObjectKey,

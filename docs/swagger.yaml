@@ -814,7 +814,7 @@ definitions:
       description:
         type: string
       document:
-        $ref: '#/definitions/file.RsDocument'
+        $ref: '#/definitions/common.RsDocument'
       email:
         type: string
       id:
@@ -859,7 +859,7 @@ definitions:
       created_at:
         type: string
       document:
-        $ref: '#/definitions/file.RsDocument'
+        $ref: '#/definitions/common.RsDocument'
       email:
         type: string
       entity_name:
@@ -1421,7 +1421,7 @@ definitions:
       description:
         type: string
       document:
-        $ref: '#/definitions/file.RsDocument'
+        $ref: '#/definitions/common.RsDocument'
       financial_settings:
         $ref: '#/definitions/clinic.RsFinancialSettings'
       id:
@@ -1619,6 +1619,203 @@ definitions:
       is_unique:
         type: boolean
     type: object
+  common.InvContact:
+    properties:
+      abn:
+        type: string
+      address:
+        items:
+          type: string
+        type: array
+      email:
+        type: string
+      fname:
+        type: string
+      id:
+        type: string
+      lname:
+        type: string
+      phone:
+        type: string
+    type: object
+  common.Invoice:
+    properties:
+      accent_color:
+        type: string
+      amount_in_words:
+        type: string
+      bill_from:
+        $ref: '#/definitions/common.InvContact'
+      bill_to:
+        $ref: '#/definitions/common.InvContact'
+      billing_period:
+        type: string
+      body_font_family:
+        type: string
+      clinic_name:
+        type: string
+      custom_fee_rate:
+        type: string
+      custom_fee_rate_display:
+        description: Tax Invoice fee rate display (e.g. "38.5%")
+        type: string
+      custom_payment_account:
+        type: string
+      custom_payment_account_name:
+        type: string
+      custom_payment_bsb:
+        type: string
+      custom_payment_method:
+        type: string
+      due_date_display:
+        type: string
+      grand_total:
+        type: number
+      has_attachments:
+        type: boolean
+      header_font_family:
+        type: string
+      invoice_frequency:
+        type: string
+      invoice_id:
+        type: string
+      invoice_number:
+        type: string
+      issue_date_display:
+        type: string
+      items:
+        items:
+          $ref: '#/definitions/common.LineItem'
+        type: array
+      logo_initial:
+        type: string
+      logo_url:
+        type: string
+      notes:
+        type: string
+      patient_fee_items:
+        description: Calculation Sheet Collections
+        items:
+          additionalProperties: true
+          type: object
+        type: array
+      payment_date_display:
+        type: string
+      payment_method_label:
+        type: string
+      primary_color:
+        description: Exported styling fields targetable by structural assignments
+        type: string
+      remittance_items:
+        description: Remittance Advice Collections
+        items:
+          additionalProperties: true
+          type: object
+        type: array
+      service_description_items:
+        items:
+          type: string
+        type: array
+      service_fee_items:
+        items:
+          additionalProperties: true
+          type: object
+        type: array
+      service_fee_rate_intro:
+        additionalProperties: true
+        type: object
+      settlement_items:
+        items:
+          additionalProperties: true
+          type: object
+        type: array
+      show_logo:
+        type: boolean
+      show_logo_image:
+        type: boolean
+      subtotal:
+        type: number
+      table_style_class:
+        type: string
+      tax_invoice_items:
+        description: Tax Invoice Collections
+        items:
+          additionalProperties: true
+          type: object
+        type: array
+      tax_total:
+        type: number
+      template_settings:
+        additionalProperties: true
+        type: object
+      terms_text:
+        type: string
+      totals_amounts_caption:
+        type: string
+      totals_grand_label:
+        type: string
+      watermark_enabled:
+        type: boolean
+      watermark_text:
+        type: string
+    type: object
+  common.LineItem:
+    properties:
+      amount:
+        type: number
+      description:
+        type: string
+      name:
+        type: string
+      running_total:
+        type: number
+    type: object
+  common.RsDocument:
+    properties:
+      created_at:
+        type: string
+      file_key:
+        type: string
+      id:
+        type: string
+      original_name:
+        type: string
+      uploaded_at:
+        type: string
+    type: object
+  common.RsSetting:
+    properties:
+      accent_color:
+        type: string
+      body_font_family:
+        type: string
+      created_at:
+        type: string
+      header_font_family:
+        type: string
+      id:
+        type: string
+      invoice_id:
+        type: string
+      is_logo:
+        type: boolean
+      is_water_mark:
+        type: boolean
+      logo:
+        $ref: '#/definitions/common.RsDocument'
+      payment_terms:
+        type: string
+      primary_color:
+        type: string
+      table_style:
+        type: string
+      term_text:
+        type: string
+      updated_at:
+        type: string
+      water_mark_text:
+        type: string
+    type: object
   contact.RqAddress:
     properties:
       address1:
@@ -1648,10 +1845,16 @@ definitions:
     properties:
       abn:
         type: string
+      accountName:
+        type: string
+      accountNumber:
+        type: string
       address:
         items:
           $ref: '#/definitions/contact.RqAddress'
         type: array
+      bsb:
+        type: string
       clinic_id:
         type: string
       email:
@@ -1662,8 +1865,16 @@ definitions:
         type: string
       note:
         type: string
+      paymentMethod:
+        type: string
       phone:
         type: string
+      role:
+        allOf:
+        - $ref: '#/definitions/util.ClinicContactPersonRole'
+        enum:
+        - DENTIST
+        - PATIENT
       website:
         type: string
     required:
@@ -1677,10 +1888,16 @@ definitions:
     properties:
       abn:
         type: string
+      accountName:
+        type: string
+      accountNumber:
+        type: string
       address:
         items:
           $ref: '#/definitions/contact.RqAddress'
         type: array
+      bsb:
+        type: string
       clinic_id:
         type: string
       email:
@@ -1693,8 +1910,16 @@ definitions:
         type: string
       note:
         type: string
+      paymentMethod:
+        type: string
       phone:
         type: string
+      role:
+        allOf:
+        - $ref: '#/definitions/util.ClinicContactPersonRole'
+        enum:
+        - DENTIST
+        - PATIENT
       website:
         type: string
     type: object
@@ -1721,10 +1946,16 @@ definitions:
     properties:
       abn:
         type: string
+      accountName:
+        type: string
+      accountNumber:
+        type: string
       address:
         items:
           $ref: '#/definitions/contact.RsAddress'
         type: array
+      bsb:
+        type: string
       clinic_id:
         type: string
       created_at:
@@ -1739,8 +1970,12 @@ definitions:
         type: string
       note:
         type: string
+      paymentMethod:
+        type: string
       phone:
         type: string
+      role:
+        $ref: '#/definitions/util.ClinicContactPersonRole'
       updated_at:
         type: string
       website:
@@ -1972,24 +2207,11 @@ definitions:
       original_name:
         type: string
     type: object
-  file.RsDocument:
-    properties:
-      created_at:
-        type: string
-      file_key:
-        type: string
-      id:
-        type: string
-      original_name:
-        type: string
-      uploaded_at:
-        type: string
-    type: object
   file.RsListDocuments:
     properties:
       documents:
         items:
-          $ref: '#/definitions/file.RsDocument'
+          $ref: '#/definitions/common.RsDocument'
         type: array
     type: object
   file.RsPresignedUploadURL:
@@ -2530,6 +2752,13 @@ definitions:
         - MONTHLY
         - YEARLY
         type: string
+      invoiceMethod:
+        allOf:
+        - $ref: '#/definitions/util.InvoiceType'
+        enum:
+        - SFA_CLINIC_COLLECTS
+        - SFA_DENTIST_COLLECTS
+        - INDEPENDENT_CONTRACTOR
       issueDate:
         type: string
       name:
@@ -2555,19 +2784,15 @@ definitions:
         type: string
       bodyFontFamily:
         type: string
-      footerId:
-        type: string
       headerFontFamily:
         type: string
       isLogo:
         type: boolean
-      isTax:
-        type: boolean
       isWatermark:
         type: boolean
-      letterheadId:
-        type: string
       logoId:
+        type: string
+      paymentTerms:
         type: string
       primaryColor:
         type: string
@@ -2615,6 +2840,13 @@ definitions:
         - MONTHLY
         - YEARLY
         type: string
+      invoiceMethod:
+        allOf:
+        - $ref: '#/definitions/util.InvoiceType'
+        enum:
+        - SFA_CLINIC_COLLECTS
+        - SFA_DENTIST_COLLECTS
+        - INDEPENDENT_CONTRACTOR
       issueDate:
         type: string
       name:
@@ -2648,6 +2880,8 @@ definitions:
         type: string
       invoiceFrequency:
         type: string
+      invoiceMethod:
+        $ref: '#/definitions/util.InvoiceType'
       issueDate:
         type: string
       name:
@@ -2688,16 +2922,24 @@ definitions:
     enum:
     - DEBIT
     - CREDIT
+    - Dentist
+    - Clinic
     type: string
     x-enum-varnames:
     - DEBIT
     - CREDIT
+    - Dentist
+    - Clinic
   item.RqEntry:
     properties:
       amount:
         type: number
       basCode:
         $ref: '#/definitions/item.BasCode'
+      children:
+        items:
+          $ref: '#/definitions/item.RqEntry'
+        type: array
       description:
         type: string
       entryType:
@@ -2710,6 +2952,10 @@ definitions:
       isFinal:
         type: boolean
       name:
+        type: string
+      paidBy:
+        type: string
+      parentId:
         type: string
       sortOrder:
         type: integer
@@ -2723,6 +2969,10 @@ definitions:
         type: number
       basCode:
         $ref: '#/definitions/item.BasCode'
+      children:
+        items:
+          $ref: '#/definitions/item.RqUpdateEntry'
+        type: array
       description:
         type: string
       entryType:
@@ -2737,6 +2987,10 @@ definitions:
       isFinal:
         type: boolean
       name:
+        type: string
+      paidBy:
+        type: string
+      parentId:
         type: string
       sortOrder:
         type: integer
@@ -2747,6 +3001,10 @@ definitions:
         type: number
       basCode:
         $ref: '#/definitions/item.BasCode'
+      children:
+        items:
+          $ref: '#/definitions/item.RsEntry'
+        type: array
       description:
         type: string
       entryType:
@@ -2761,6 +3019,10 @@ definitions:
       isFinal:
         type: boolean
       name:
+        type: string
+      paidBy:
+        type: string
+      parentId:
         type: string
       sortOrder:
         type: integer
@@ -2932,12 +3194,6 @@ definitions:
     type: object
   section.RqSection:
     properties:
-      accountName:
-        type: string
-      accountNumber:
-        type: string
-      bsb:
-        type: string
       documentNumber:
         type: string
       entries:
@@ -2946,19 +3202,18 @@ definitions:
         type: array
       invoiceId:
         type: string
-      paymentDate:
+      parentSectionId:
         type: string
-      paymentMethod:
+      paymentDate:
         type: string
       paymentReference:
         type: string
       sectionType:
-        allOf:
-        - $ref: '#/definitions/section.SectionType'
-        enum:
-        - CALCULATION_STATEMENT
-        - SFA_INVOICE
-        - REMITTANCE_INVOICE
+        $ref: '#/definitions/section.SectionType'
+      sections:
+        items:
+          $ref: '#/definitions/section.RqSection'
+        type: array
       taxMethod:
         allOf:
         - $ref: '#/definitions/section.TaxMethod'
@@ -2966,27 +3221,11 @@ definitions:
         - INCLUSIVE
         - EXCLUSIVE
         - NO_TAX
-      templateId:
-        type: string
-    required:
-    - documentNumber
-    - sectionType
     type: object
   section.RqUpdateSection:
     properties:
       SectionType:
-        allOf:
-        - $ref: '#/definitions/section.SectionType'
-        enum:
-        - CALCULATION_STATEMENT
-        - SFA_INVOICE
-        - REMITTANCE_INVOICE
-      accountName:
-        type: string
-      accountNumber:
-        type: string
-      bsb:
-        type: string
+        $ref: '#/definitions/section.SectionType'
       deleteEntries:
         items:
           type: string
@@ -3001,12 +3240,16 @@ definitions:
         type: string
       invoiceId:
         type: string
-      paymentDate:
+      parentSectionId:
         type: string
-      paymentMethod:
+      paymentDate:
         type: string
       paymentReference:
         type: string
+      sections:
+        items:
+          $ref: '#/definitions/section.RqUpdateSection'
+        type: array
       taxMethod:
         allOf:
         - $ref: '#/definitions/section.TaxMethod'
@@ -3014,17 +3257,9 @@ definitions:
         - INCLUSIVE
         - EXCLUSIVE
         - NO_TAX
-      templateId:
-        type: string
     type: object
   section.RsSection:
     properties:
-      accountName:
-        type: string
-      accountNumber:
-        type: string
-      bsb:
-        type: string
       createdAt:
         type: string
       documentNumber:
@@ -3037,18 +3272,20 @@ definitions:
         type: string
       invoiceId:
         type: string
-      paymentDate:
+      parentSectionId:
         type: string
-      paymentMethod:
+      paymentDate:
         type: string
       paymentReference:
         type: string
       sectionType:
         $ref: '#/definitions/section.SectionType'
+      sections:
+        items:
+          $ref: '#/definitions/section.RsSection'
+        type: array
       taxMethod:
         $ref: '#/definitions/section.TaxMethod'
-      templateId:
-        type: string
       updatedAt:
         type: string
     type: object
@@ -3057,11 +3294,13 @@ definitions:
     - CALCULATION_STATEMENT
     - SFA_INVOICE
     - REMITTANCE_INVOICE
+    - RCTI
     type: string
     x-enum-varnames:
     - CALCULATIONSTATEMENT
-    - SFAINVOICE
+    - TAXINVOICE
     - REMITTANCEINVOICE
+    - RCTI
   section.TaxMethod:
     enum:
     - NO_TAX
@@ -3226,166 +3465,6 @@ definitions:
     - StatusPaused
     - StatusExpired
     - StatusInactive
-  template.Attachment:
-    properties:
-      file_name:
-        type: string
-    type: object
-  template.InvoiceData:
-    properties:
-      accent_color:
-        type: string
-      amount_in_words:
-        type: string
-      attachments:
-        items:
-          $ref: '#/definitions/template.Attachment'
-        type: array
-      bill_from:
-        $ref: '#/definitions/template.PartyInfo'
-      bill_to:
-        $ref: '#/definitions/template.PartyInfo'
-      billing_period:
-        type: string
-      body_font_family:
-        type: string
-      clinic_name:
-        type: string
-      custom_fee_rate:
-        type: string
-      custom_fee_rate_display:
-        description: Tax Invoice fee rate display (e.g. "38.5%")
-        type: string
-      custom_payment_account:
-        type: string
-      custom_payment_account_name:
-        type: string
-      custom_payment_bsb:
-        type: string
-      custom_payment_method:
-        type: string
-      due_date_display:
-        type: string
-      footer_html:
-        type: string
-      grand_total:
-        type: number
-      has_attachments:
-        type: boolean
-      header_font_family:
-        type: string
-      invoice_frequency:
-        type: string
-      invoice_number:
-        type: string
-      issue_date_display:
-        type: string
-      items:
-        items:
-          $ref: '#/definitions/template.LineItem'
-        type: array
-      letterhead_html:
-        type: string
-      logo_initial:
-        type: string
-      logo_url:
-        type: string
-      notes:
-        type: string
-      patient_fee_items:
-        description: Calculation Sheet Collections
-        items:
-          additionalProperties: true
-          type: object
-        type: array
-      payment_date_display:
-        type: string
-      payment_method_label:
-        type: string
-      primary_color:
-        description: Exported styling fields targetable by structural assignments
-        type: string
-      remittance_items:
-        description: Remittance Advice Collections
-        items:
-          additionalProperties: true
-          type: object
-        type: array
-      service_description_items:
-        items:
-          type: string
-        type: array
-      service_fee_items:
-        items:
-          additionalProperties: true
-          type: object
-        type: array
-      service_fee_rate_intro:
-        additionalProperties: true
-        type: object
-      settlement_items:
-        items:
-          additionalProperties: true
-          type: object
-        type: array
-      show_logo:
-        type: boolean
-      show_logo_image:
-        type: boolean
-      show_tax:
-        type: boolean
-      subtotal:
-        type: number
-      table_style_class:
-        type: string
-      tax_invoice_items:
-        description: Tax Invoice Collections
-        items:
-          additionalProperties: true
-          type: object
-        type: array
-      tax_total:
-        type: number
-      template_settings:
-        additionalProperties: true
-        type: object
-      terms_text:
-        type: string
-      totals_amounts_caption:
-        type: string
-      totals_grand_label:
-        type: string
-      watermark_enabled:
-        type: boolean
-      watermark_text:
-        type: string
-    type: object
-  template.LineItem:
-    properties:
-      amount:
-        type: number
-      description:
-        type: string
-      name:
-        type: string
-      running_total:
-        type: number
-    type: object
-  template.PartyInfo:
-    properties:
-      abn:
-        type: string
-      address:
-        type: string
-      email:
-        type: string
-      name:
-        type: string
-      payment_method:
-        type: string
-      phone:
-        type: string
-    type: object
   template.RqGlobalTemplate:
     properties:
       css:
@@ -3411,70 +3490,25 @@ definitions:
         type: string
       body_font_family:
         type: string
-      footer:
-        type: string
       header_font_family:
         type: string
       id:
         type: string
+      invoice_id:
+        type: string
       is_logo:
-        type: boolean
-      is_tax:
         type: boolean
       is_water_mark:
         type: boolean
-      letter_head:
-        type: string
       logo:
         type: string
-      mapping_id:
+      payment_terms:
         type: string
       primary_color:
         type: string
       table_style:
         type: string
-      template_id:
-        type: string
       term_text:
-        type: string
-      water_mark_text:
-        type: string
-    type: object
-  template.RsSetting:
-    properties:
-      accent_color:
-        type: string
-      body_font_family:
-        type: string
-      created_at:
-        type: string
-      footer:
-        $ref: '#/definitions/file.RsDocument'
-      header_font_family:
-        type: string
-      id:
-        type: string
-      is_logo:
-        type: boolean
-      is_tax:
-        type: boolean
-      is_water_mark:
-        type: boolean
-      letter_head:
-        $ref: '#/definitions/file.RsDocument'
-      logo:
-        $ref: '#/definitions/file.RsDocument'
-      mapping_id:
-        type: string
-      primary_color:
-        type: string
-      table_style:
-        type: string
-      template_id:
-        type: string
-      term_text:
-        type: string
-      updated_at:
         type: string
       water_mark_text:
         type: string
@@ -3510,6 +3544,24 @@ definitions:
     - ChannelInApp
     - ChannelPush
     - ChannelEmail
+  util.ClinicContactPersonRole:
+    enum:
+    - DENTIST
+    - PATIENT
+    type: string
+    x-enum-varnames:
+    - RoleDentist
+    - RolePatient
+  util.InvoiceType:
+    enum:
+    - SFA_CLINIC_COLLECTS
+    - SFA_DENTIST_COLLECTS
+    - INDEPENDENT_CONTRACTOR
+    type: string
+    x-enum-varnames:
+    - InvoiceTypeSFAClinicCollects
+    - InvoiceTypeSFADentistCollects
+    - InvoiceTypeIndependentContractor
   util.NotificationEventType:
     enum:
     - new.transaction
@@ -6485,6 +6537,11 @@ paths:
     get:
       consumes:
       - application/json
+      parameters:
+      - description: DENTIST or PATIENT
+        in: query
+        name: role
+        type: string
       produces:
       - application/json
       responses:
@@ -8420,7 +8477,7 @@ paths:
             - $ref: '#/definitions/response.RsBase'
             - properties:
                 data:
-                  $ref: '#/definitions/file.RsDocument'
+                  $ref: '#/definitions/common.RsDocument'
               type: object
         "400":
           description: Bad Request
@@ -8465,7 +8522,7 @@ paths:
             - $ref: '#/definitions/response.RsBase'
             - properties:
                 data:
-                  $ref: '#/definitions/file.RsDocument'
+                  $ref: '#/definitions/common.RsDocument'
               type: object
         "400":
           description: Bad Request
@@ -10399,12 +10456,13 @@ paths:
       - calculation
   /templates:
     get:
-      description: Gathers paginated index parameters tracking active engine documents
+      description: Gathers pagination index tracking active engine documents matching
+        invoice methods
       parameters:
-      - description: 'Filter by document types (comma-separated: Calculation Statement,
-          Tax Invoice, Remittance Advice)'
+      - description: 'Filter by invoice method : SFA_CLINIC_COLLECTS(A), SFA_DENTIST_COLLECTS(B)
+          or INDEPENDENT_CONTRACTOR(C)'
         in: query
-        name: type
+        name: method
         type: string
       produces:
       - application/json
@@ -10586,7 +10644,7 @@ paths:
         name: request
         required: true
         schema:
-          $ref: '#/definitions/template.InvoiceData'
+          $ref: '#/definitions/common.Invoice'
       produces:
       - application/pdf
       responses:
@@ -10618,46 +10676,13 @@ paths:
       tags:
       - Templates
   /templates/{id}/settings:
-    get:
-      description: Queries UI visual presets (e.g., brand colors, fonts, margins)
-        tracked down to structural design blocks
-      parameters:
-      - description: Template UUID ID
-        in: path
-        name: id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Style settings specifications map
-          schema:
-            $ref: '#/definitions/template.RsSetting'
-        "400":
-          description: Invalid profile lookup request values
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "500":
-          description: Internal Server Error
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      security:
-      - BearerToken: []
-      summary: Get Default Template Settings
-      tags:
-      - Templates
     put:
       consumes:
       - application/json
       description: Overrides layout details, font schemas, branding assets, or invoice
         structural rules dynamically
       parameters:
-      - description: Template UUID ID
+      - description: Invoice ID
         in: path
         name: id
         required: true
@@ -10674,7 +10699,7 @@ paths:
         "200":
           description: Settings modified context mapping properties updated cleanly
           schema:
-            $ref: '#/definitions/template.RsSetting'
+            $ref: '#/definitions/common.RsSetting'
         "400":
           description: Validation failure errors
           schema:
@@ -10697,25 +10722,17 @@ paths:
       description: Queries UI visual presets prioritizing custom invoice overrides,
         falling back to global defaults automatically
       parameters:
-      - description: Invoice UUID ID Context
+      - description: Invoice ID (blank for global system defaults)
         in: query
         name: invoiceId
-        required: true
-        type: string
-      - description: Template UUID ID (can be repeated for multiple templates)
-        in: query
-        name: templateId
-        required: true
         type: string
       produces:
       - application/json
       responses:
         "200":
-          description: Resolved style settings specifications map keyed by template
-            ID
+          description: Resolved style settings specifications model payload
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/common.RsSetting'
         "400":
           description: Invalid parameters profile lookup request values
           schema:
@@ -10735,17 +10752,12 @@ paths:
       - Templates
   /templates/invoices/{invoice_id}/download:
     get:
-      description: Queries static database invoice documents, evaluates values natively
-        against dynamic parameters, and streams a file binary response
+      description: Queries the invoice record, resolves the template sequence from
+        its billing method type, and streams the compiled PDF
       parameters:
       - description: Target Invoice Entity Context Index UUID
         in: path
         name: invoice_id
-        required: true
-        type: string
-      - description: Template UUID ID (can be repeated for multiple templates)
-        in: query
-        name: templateId
         required: true
         type: string
       produces:

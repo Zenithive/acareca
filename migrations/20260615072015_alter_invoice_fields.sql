@@ -73,7 +73,7 @@ ALTER TABLE tbl_invoice_item
     ADD COLUMN IF NOT EXISTS invoice_section_id UUID,
     ADD COLUMN IF NOT EXISTS entry_type VARCHAR(50),
     ADD COLUMN IF NOT EXISTS field_key VARCHAR(50),
-    ADD COLUMN IF NOT EXISTS expression VARCHAR(255);
+    ADD COLUMN IF NOT EXISTS expression jsonb NULL;
 
 -- Add foreign key constraint for invoice section
 ALTER TABLE tbl_invoice_item

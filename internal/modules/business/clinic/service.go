@@ -14,6 +14,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/file"
 	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
+	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/iamarpitzala/acareca/internal/shared/limits"
 	sharednotification "github.com/iamarpitzala/acareca/internal/shared/notification"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
@@ -90,7 +91,7 @@ func (s *service) CreateClinic(ctx context.Context, actorID uuid.UUID, role stri
 		}
 
 		// Resolve document if provided
-		var doc *file.Document
+		var doc *common.Document
 		if req.DocumentId != nil && *req.DocumentId != "" {
 			docID, parseErr := uuid.Parse(*req.DocumentId)
 			if parseErr == nil {

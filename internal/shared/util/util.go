@@ -185,7 +185,7 @@ type RsList struct {
 	Limit int         `json:"limit"`
 }
 
-func (rs *RsList) MapToList(data interface{}, total, page, limit int) {
+func (rs *RsList) MapToList(data interface{}, total int, page int, limit int) {
 	rs.Items = data
 	rs.Total = total
 	rs.Page = page
@@ -397,4 +397,17 @@ func MapEventTypeToNotificationEventType(eventType EventType) []NotificationEven
 	default:
 		return []NotificationEventType{EventSystemActivityAlert}
 	}
+}
+
+func FormatDateString(dateStr string) string {
+	if dateStr == "" {
+		return ""
+	}
+
+	parsedDate, err := ParseFlexibleDate(dateStr)
+	if err != nil {
+		return dateStr
+	}
+
+	return parsedDate.Format("02 Jan 2006")
 }

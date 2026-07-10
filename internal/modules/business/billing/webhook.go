@@ -344,7 +344,7 @@ func (s *service) notifyPaymentFailedAlert(practitionerID uuid.UUID, stripeSubID
 	})
 }
 
-func (s *service) notifySubscriptionDeletedAlert(practitionerID uuid.UUID, stripeSubID string) {
+func (s *service) notifySubscriptionDeletedAlert(practitionerID uuid.UUID, _ string) {
 	if s.adminRepo == nil || s.notificationPub == nil {
 		return
 	}

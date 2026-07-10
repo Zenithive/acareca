@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/iamarpitzala/acareca/internal/modules/file"
 	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/jmoiron/sqlx"
 )
@@ -48,7 +47,7 @@ type Repository interface {
 	GetPractitionerForAccountant(ctx context.Context, accountantID uuid.UUID) (*uuid.UUID, error)
 	DeleteClinicAddress(ctx context.Context, tx *sqlx.Tx, clinicID uuid.UUID) error
 	DeleteClinicContact(ctx context.Context, tx *sqlx.Tx, id uuid.UUID, clinicID uuid.UUID) error
-	GetDocumentByClinicID(ctx context.Context, tx *sqlx.Tx, clinicID uuid.UUID) (*file.Document, error)
+	GetDocumentByClinicID(ctx context.Context, tx *sqlx.Tx, clinicID uuid.UUID) (*common.Document, error)
 	DeleteClinicContacts(ctx context.Context, tx *sqlx.Tx, clinicID uuid.UUID) error
 	DeleteFormsByClinicID(ctx context.Context, tx *sqlx.Tx, clinicID uuid.UUID) error
 }
@@ -606,7 +605,7 @@ func (r *repository) DeleteClinicContact(ctx context.Context, tx *sqlx.Tx, id uu
 	return err
 }
 
-func (r *repository) GetDocumentByClinicID(ctx context.Context, tx *sqlx.Tx, clinicID uuid.UUID) (*file.Document, error) {
+func (r *repository) GetDocumentByClinicID(ctx context.Context, tx *sqlx.Tx, clinicID uuid.UUID) (*common.Document, error) {
 	query := `
 		SELECT
 			d.id, d.owner_id, d.owner_role, d.object_key, d.bucket,
@@ -618,7 +617,7 @@ func (r *repository) GetDocumentByClinicID(ctx context.Context, tx *sqlx.Tx, cli
 		WHERE c.id = $1 AND c.deleted_at IS NULL AND d.deleted_at IS NULL
 		LIMIT 1`
 
-	var doc file.Document
+	var doc common.Document
 	if err := tx.GetContext(ctx, &doc, query, clinicID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil

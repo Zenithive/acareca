@@ -13,21 +13,14 @@ type ISection interface {
 	Build(ctx context.Context, invoiceId *uuid.UUID) (Section, error)
 }
 
-func (ct CalculationStatement) Build(ctx context.Context, invoiceId *uuid.UUID, calculatedDocNum string) (Section, error) {
+func (ct *CalculationStatement) Build(ctx context.Context, invoiceId *uuid.UUID) (Section, error) {
 	sectionID := uuid.New()
 
-	// Set default document number if not provided
 	docNumber := ct.DocumentNumber
 	if docNumber == "" {
-		if calculatedDocNum != "" {
-			docNumber = calculatedDocNum
-		} else {
-			// Fallback if database indexer isn't ready
-			docNumber = "CS-" + strconv.Itoa(time.Now().Year()) + "-" + uuid.New().String()[:8]
-		}
+		docNumber = "CS-" + strconv.Itoa(time.Now().Year()) + "-" + uuid.New().String()[:8]
 	}
 
-	// Link entries to this section
 	entries := ct.Entries
 	if entries == nil {
 		entries = []*item.Item{}
@@ -36,36 +29,27 @@ func (ct CalculationStatement) Build(ctx context.Context, invoiceId *uuid.UUID, 
 		entry.InvoiceSectionID = &sectionID
 	}
 
+	sectionType := CALCULATIONSTATEMENT
 	return Section{
 		ID:               sectionID,
 		InvoiceID:        invoiceId,
-		InvoiceSection:   CALCULATIONSTATEMENT,
+		InvoiceSection:   &sectionType,
 		DocumentNumber:   docNumber,
 		TaxMethod:        ct.TaxMethod,
-		PaymentMethod:    ct.PaymentMethod,
-		AccountName:      ct.AccountName,
-		Bsb:              ct.Bsb,
-		AccountNumber:    ct.AccountNumber,
 		PaymentDate:      ct.PaymentDate,
 		PaymentReference: ct.PaymentReference,
 		Entries:          entries,
 	}, nil
 }
 
-func (ct SfaInvoice) Build(ctx context.Context, invoiceId *uuid.UUID, calculatedDocNum string) (Section, error) {
+func (ct *SfaInvoice) Build(ctx context.Context, invoiceId *uuid.UUID) (Section, error) {
 	sectionID := uuid.New()
 
-	// Set default document number if not provided
 	docNumber := ct.DocumentNumber
 	if docNumber == "" {
-		if calculatedDocNum != "" {
-			docNumber = calculatedDocNum
-		} else {
-			docNumber = "SFA-" + strconv.Itoa(time.Now().Year()) + "-" + uuid.New().String()[:8]
-		}
+		docNumber = "SFA-" + strconv.Itoa(time.Now().Year()) + "-" + uuid.New().String()[:8]
 	}
 
-	// Link entries to this section
 	entries := ct.Entries
 	if entries == nil {
 		entries = []*item.Item{}
@@ -74,36 +58,27 @@ func (ct SfaInvoice) Build(ctx context.Context, invoiceId *uuid.UUID, calculated
 		entry.InvoiceSectionID = &sectionID
 	}
 
+	sectionType := TAXINVOICE
 	return Section{
 		ID:               sectionID,
 		InvoiceID:        invoiceId,
-		InvoiceSection:   SFAINVOICE,
+		InvoiceSection:   &sectionType,
 		DocumentNumber:   docNumber,
 		TaxMethod:        ct.TaxMethod,
-		PaymentMethod:    ct.PaymentMethod,
-		AccountName:      ct.AccountName,
-		Bsb:              ct.Bsb,
-		AccountNumber:    ct.AccountNumber,
 		PaymentDate:      ct.PaymentDate,
 		PaymentReference: ct.PaymentReference,
 		Entries:          entries,
 	}, nil
 }
 
-func (ct RemittanceInvoice) Build(ctx context.Context, invoiceId *uuid.UUID, calculatedDocNum string) (Section, error) {
+func (ct *RemittanceInvoice) Build(ctx context.Context, invoiceId *uuid.UUID) (Section, error) {
 	sectionID := uuid.New()
 
-	// Set default document number if not provided
 	docNumber := ct.DocumentNumber
 	if docNumber == "" {
-		if calculatedDocNum != "" {
-			docNumber = calculatedDocNum
-		} else {
-			docNumber = "REM-" + strconv.Itoa(time.Now().Year()) + "-" + uuid.New().String()[:8]
-		}
+		docNumber = "REM-" + strconv.Itoa(time.Now().Year()) + "-" + uuid.New().String()[:8]
 	}
 
-	// Link entries to this section
 	entries := ct.Entries
 	if entries == nil {
 		entries = []*item.Item{}
@@ -112,16 +87,42 @@ func (ct RemittanceInvoice) Build(ctx context.Context, invoiceId *uuid.UUID, cal
 		entry.InvoiceSectionID = &sectionID
 	}
 
+	sectionType := REMITTANCEINVOICE
 	return Section{
 		ID:               sectionID,
 		InvoiceID:        invoiceId,
-		InvoiceSection:   REMITTANCEINVOICE,
+		InvoiceSection:   &sectionType,
 		DocumentNumber:   docNumber,
 		TaxMethod:        ct.TaxMethod,
-		PaymentMethod:    ct.PaymentMethod,
-		AccountName:      ct.AccountName,
-		Bsb:              ct.Bsb,
-		AccountNumber:    ct.AccountNumber,
+		PaymentDate:      ct.PaymentDate,
+		PaymentReference: ct.PaymentReference,
+		Entries:          entries,
+	}, nil
+}
+
+func (ct *RctiInvoice) Build(ctx context.Context, invoiceId *uuid.UUID) (Section, error) {
+	sectionID := uuid.New()
+
+	docNumber := ct.DocumentNumber
+	if docNumber == "" {
+		docNumber = "RCTI-" + strconv.Itoa(time.Now().Year()) + "-" + uuid.New().String()[:8]
+	}
+
+	entries := ct.Entries
+	if entries == nil {
+		entries = []*item.Item{}
+	}
+	for _, entry := range entries {
+		entry.InvoiceSectionID = &sectionID
+	}
+
+	sectionType := RCTI
+	return Section{
+		ID:               sectionID,
+		InvoiceID:        invoiceId,
+		InvoiceSection:   &sectionType,
+		DocumentNumber:   docNumber,
+		TaxMethod:        ct.TaxMethod,
 		PaymentDate:      ct.PaymentDate,
 		PaymentReference: ct.PaymentReference,
 		Entries:          entries,

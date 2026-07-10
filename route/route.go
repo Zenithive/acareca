@@ -26,6 +26,8 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/contact"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/invoice"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/template"
+	templateRepository "github.com/iamarpitzala/acareca/internal/modules/clinic/template/repository"
+	templateService "github.com/iamarpitzala/acareca/internal/modules/clinic/template/service"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/bas"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/bs"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/pl"
@@ -189,7 +191,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 	equity.RegisterRoutes(v1, equityHandler, cfg)
 
 	bsRepo := bs.NewRepository(dbConn)
-	bsSvc := bs.NewService(bsRepo, equitySvc, dbConn, auditSvc, authRepo, invitationSvc, accountantRepo, practitionerSvc, invitationRepo, authSvc, notificationSvc, adminRepo)
+	bsSvc := bs.NewService(bsRepo, equitySvc, dbConn, auditSvc, authRepo, invitationSvc, accountantRepo, practitionerSvc, invitationRepo, authSvc, notificationSvc, adminRepo, fySvc)
 	bsHandler := bs.NewHandler(bsSvc, invitationSvc)
 	bs.RegisterRoutes(v1, bsHandler, cfg)
 
@@ -228,15 +230,38 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 	preference.RegisterRoutes(nft, preferenceHandler)
 
 	// ============ INVOICE MODULE ============
-	tmpRepo := template.NewRepository(dbConn)
-	tempSvc := template.NewService(tmpRepo, cfg)
-	RegisterInvoiceRoutes(v1, cfg, dbConn, auditSvc, tempSvc)
+	// Initialize template container with new architecture
+	templateContainer, err := template.NewContainer(cfg, dbConn)
+	if err != nil {
+		log.Fatalf("failed to initialize template container: %v", err)
+	}
+
+	// Inject service factory to avoid circular dependency
+	templateContainer.SetServiceFactory(func(
+		cfg *config.Config,
+		templateRepo templateRepository.ITemplateRepository,
+		settingRepo templateRepository.ISettingRepository,
+	) template.IService {
+		return templateService.NewCompositeServiceWithDB(dbConn, cfg, templateRepo, settingRepo)
+	})
+
+	tempSvc := templateContainer.Service()
+	RegisterInvoiceRoutes(v1, cfg, dbConn, auditSvc, tempSvc, templateContainer)
 
 	clinicAuthRepo := clinicauth.NewRepository(dbConn)
 	clinicAuthSvc := clinicauth.NewService(clinicAuthRepo, cfg, dbConn, auditSvc, tempSvc)
 
 	contactSvc := contact.NewService(contact.NewRepository(dbConn))
-	invoiceSvc := invoice.NewService(dbConn, invoice.NewRepository(dbConn), cfg, tempSvc, clinicAuthSvc, tmpRepo)
+
+	invoiceSvc := invoice.NewService(
+		dbConn,
+		invoice.NewRepository(dbConn),
+		cfg,
+		tempSvc,
+		clinicAuthSvc,
+		templateContainer.SettingRepo(),
+		templateContainer.TemplateRepo(),
+	)
 	RegisterClinicRoutes(v1, cfg, contactSvc, invoiceSvc)
 
 	// Initialize notification consumer (separate from service)

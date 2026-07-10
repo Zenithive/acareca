@@ -30,7 +30,6 @@ type IRepository interface {
 	GetByID(ctx context.Context, db sqlx.QueryerContext, id uuid.UUID) (*Invoice, error)
 	GetSavedClinicMailTemplate(ctx context.Context, clinicID uuid.UUID) (string, string, error)
 	SaveClinicMailTemplate(ctx context.Context, clinicID uuid.UUID, subject, body string) error
-	GetNextSequenceForYear(ctx context.Context, prefix string, year string) (string, error)
 }
 
 type Repository struct {
@@ -64,8 +63,8 @@ func (r *Repository) Create(ctx context.Context, invoice *Invoice) error {
 		INSERT INTO tbl_invoice (
 			id, clinic_id, contact_id, name,
 			billing_period_from, billing_period_to, invoice_frequency,
-			issue_date, due_date, status
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`
+			issue_date, due_date, status, invoice_method
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`
 
 		_, err := tx.ExecContext(ctx, query,
 			invoice.ID,
@@ -78,6 +77,7 @@ func (r *Repository) Create(ctx context.Context, invoice *Invoice) error {
 			invoice.IssueDate,
 			invoice.DueDate,
 			invoice.Status,
+			invoice.InvoiceMethod,
 		)
 		if err != nil {
 			return err
@@ -103,8 +103,8 @@ func (r *Repository) Update(ctx context.Context, invoice *Invoice) error {
 		SET contact_id = $1, name = $2,
 			billing_period_from = $3, billing_period_to = $4,
 			invoice_frequency = $5, issue_date = $6, due_date = $7,
-			status = $8, updated_at = NOW()
-		WHERE id = $9 AND deleted_at IS NULL
+			status = $8, invoice_method = $9, updated_at = NOW()
+		WHERE id = $10 AND deleted_at IS NULL
 	`
 
 		result, err := tx.ExecContext(ctx, query,
@@ -116,6 +116,7 @@ func (r *Repository) Update(ctx context.Context, invoice *Invoice) error {
 			invoice.IssueDate,
 			invoice.DueDate,
 			invoice.Status,
+			invoice.InvoiceMethod,
 			invoice.ID,
 		)
 		if err != nil {
@@ -187,21 +188,63 @@ func (r *Repository) List(ctx context.Context, filter common.Filter) ([]*Invoice
 	allowedColumns := r.getAllowedFilterColumns()
 	searchCols := []string{}
 
+	// Join tbl_map_invoice_section to pull payment_date and payment_reference
+	// (stored per-section) up to the invoice row. DISTINCT ON invoice id picks
+	// the first non-null section that has either field set.
 	selectQuery := `
 		SELECT 
-			id, clinic_id, contact_id, name,
-			billing_period_from, billing_period_to,
-			invoice_frequency, status, issue_date, due_date,
-			created_at, updated_at
-		FROM tbl_invoice
-		WHERE deleted_at IS NULL
+			i.id, i.clinic_id, i.contact_id, i.name,
+			i.billing_period_from, i.billing_period_to,
+			i.invoice_frequency, i.status, i.issue_date, i.due_date, i.invoice_method,
+			i.created_at, i.updated_at,
+			s.payment_date, s.payment_reference
+		FROM tbl_invoice i
+		LEFT JOIN LATERAL (
+			SELECT payment_date, payment_reference
+			FROM tbl_map_invoice_section
+			WHERE invoice_id = i.id
+			  AND deleted_at IS NULL
+			  AND (payment_date IS NOT NULL OR payment_reference IS NOT NULL)
+			ORDER BY created_at ASC
+			LIMIT 1
+		) s ON true
+		WHERE i.deleted_at IS NULL
 	`
 
 	query, args := common.BuildQuery(selectQuery, filter, allowedColumns, searchCols, false)
-	invoices := make([]*Invoice, 0)
-	err = r.db.SelectContext(ctx, &invoices, sqlx.Rebind(sqlx.DOLLAR, query), args...)
+
+	rows, err := r.db.QueryxContext(ctx, sqlx.Rebind(sqlx.DOLLAR, query), args...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("select invoices failed: %w", err)
+	}
+	defer rows.Close()
+
+	invoices := make([]*Invoice, 0)
+	for rows.Next() {
+		inv := &Invoice{}
+		if err := rows.Scan(
+			&inv.ID,
+			&inv.ClinicID,
+			&inv.ContactID,
+			&inv.Name,
+			&inv.BillingPeriodFrom,
+			&inv.BillingPeriodTo,
+			&inv.InvoiceFrequency,
+			&inv.Status,
+			&inv.IssueDate,
+			&inv.DueDate,
+			&inv.InvoiceMethod,
+			&inv.CreatedAt,
+			&inv.UpdatedAt,
+			&inv.PaymentDate,
+			&inv.PaymentReference,
+		); err != nil {
+			return nil, 0, fmt.Errorf("scan invoice failed: %w", err)
+		}
+		invoices = append(invoices, inv)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("rows error: %w", err)
 	}
 
 	for _, invoice := range invoices {
@@ -219,7 +262,7 @@ func (r *Repository) GetByID(ctx context.Context, q sqlx.QueryerContext, id uuid
 		SELECT
 			id, clinic_id, contact_id::text, name,
 			billing_period_from::text, billing_period_to::text,
-			invoice_frequency, status, issue_date, due_date,
+			invoice_frequency, status, issue_date, due_date, invoice_method,
 			created_at, updated_at
 		FROM tbl_invoice
 		WHERE id = $1 AND deleted_at IS NULL
@@ -237,6 +280,7 @@ func (r *Repository) GetByID(ctx context.Context, q sqlx.QueryerContext, id uuid
 		&invoice.Status,
 		&invoice.IssueDate,
 		&invoice.DueDate,
+		&invoice.InvoiceMethod,
 		&invoice.CreatedAt,
 		&invoice.UpdatedAt,
 	)
@@ -305,15 +349,19 @@ func (r *Repository) countInvoices(ctx context.Context, filter common.Filter) (i
 // getAllowedFilterColumns returns the allowed columns for filtering
 func (r *Repository) getAllowedFilterColumns() map[string]string {
 	return map[string]string{
-		"id":               "id",
-		"name":             "name",
-		"status":           "status",
-		"contact_id":       "contact_id",
-		"clinic_id":        "clinic_id",
-		"deleted_at":       "deleted_at",
-		"date_range_start": "issue_date",
-		"date_range_end":   "issue_date",
-		"created_at":       "created_at",
+		"id":                "id",
+		"name":              "name",
+		"status":            "status",
+		"contact_id":        "contact_id",
+		"invoice_frequency": "invoice_frequency",
+		"issue_date":        "issue_date",
+		"due_date":          "due_date",
+		"invoice_method":    "invoice_method",
+		"clinic_id":         "clinic_id",
+		"deleted_at":        "deleted_at",
+		"date_range_start":  "issue_date",
+		"date_range_end":    "issue_date",
+		"created_at":        "created_at",
 	}
 }
 
@@ -376,8 +424,8 @@ func (r *Repository) UpdateWithSections(ctx context.Context, invoice *Invoice, s
 		SET contact_id = $1,  name = $2,
 			billing_period_from = $3, billing_period_to = $4,
 			invoice_frequency = $5, issue_date = $6, due_date = $7,
-			status = $8, updated_at = NOW()
-		WHERE id = $9 AND deleted_at IS NULL
+			status = $8, invoice_method = $9, updated_at = NOW()
+		WHERE id = $10 AND deleted_at IS NULL
 	`
 
 		result, err := tx.ExecContext(ctx, query,
@@ -389,6 +437,7 @@ func (r *Repository) UpdateWithSections(ctx context.Context, invoice *Invoice, s
 			invoice.IssueDate,
 			invoice.DueDate,
 			invoice.Status,
+			invoice.InvoiceMethod,
 			invoice.ID,
 		)
 		if err != nil {
@@ -405,24 +454,4 @@ func (r *Repository) UpdateWithSections(ctx context.Context, invoice *Invoice, s
 
 		return nil
 	})
-}
-
-func (r *Repository) GetNextSequenceForYear(ctx context.Context, prefix string, year string) (string, error) {
-	var maxSeq int
-
-	query := `
-		SELECT COALESCE(
-			MAX(CAST(SPLIT_PART(document_number, '-', 3) AS INTEGER)),
-			0
-		)
-		FROM tbl_map_invoice_section
-		WHERE document_number LIKE $1 || '-' || $2 || '-%'
-	`
-	if err := r.db.GetContext(ctx, &maxSeq, query, prefix, year); err != nil {
-		return "", err
-	}
-
-	nextSeq := maxSeq + 1
-
-	return fmt.Sprintf("%s-%s-%04d", prefix, year, nextSeq), nil
 }

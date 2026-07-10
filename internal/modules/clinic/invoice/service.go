@@ -6,15 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"strconv"
-	"strings"
-	"time"
 
 	"github.com/google/uuid"
 	clinicauth "github.com/iamarpitzala/acareca/internal/modules/clinic/auth"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/invoice/section"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/item"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/template"
+	"github.com/iamarpitzala/acareca/internal/modules/clinic/template/repository"
+	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/iamarpitzala/acareca/internal/shared/mail"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/iamarpitzala/acareca/pkg/config"
@@ -34,57 +33,71 @@ type IService interface {
 }
 
 type Service struct {
-	db         *sqlx.DB
-	repo       IRepository
-	cfg        *config.Config
-	mailer     *mail.Client
-	tplService template.IService
-	clinicSvc  clinicauth.Service
-	tplRepo    template.IRepository
+	db           *sqlx.DB
+	repo         IRepository
+	cfg          *config.Config
+	mailer       *mail.Client
+	tplService   template.IService
+	clinicSvc    clinicauth.Service
+	settingRepo  repository.ISettingRepository
+	templateRepo repository.ITemplateRepository
+	itemRepo     item.IRepository
 }
 
-func NewService(db *sqlx.DB, repo IRepository, cfg *config.Config, tplService template.IService, clinicSvc clinicauth.Service, tplRepo template.IRepository) IService {
+func NewService(db *sqlx.DB, repo IRepository, cfg *config.Config, tplService template.IService, clinicSvc clinicauth.Service, settingRepo repository.ISettingRepository, templateRepo repository.ITemplateRepository) IService {
 	return &Service{
-		db:         db,
-		repo:       repo,
-		cfg:        cfg,
-		mailer:     mail.NewClient(cfg.ResendAPIKey, cfg.SenderEmail),
-		tplService: tplService,
-		clinicSvc:  clinicSvc,
-		tplRepo:    tplRepo,
+		db:           db,
+		repo:         repo,
+		cfg:          cfg,
+		mailer:       mail.NewClient(cfg.ResendAPIKey, cfg.SenderEmail),
+		tplService:   tplService,
+		clinicSvc:    clinicSvc,
+		settingRepo:  settingRepo,
+		templateRepo: templateRepo,
+		itemRepo:     item.NewRepository(db),
 	}
 }
 
 func (s *Service) Create(ctx context.Context, invoice *RqInvoice) error {
+	if err := invoice.Validate(); err != nil {
+		return err
+	}
+
 	inv := invoice.ToInvoice()
 
 	if len(inv.Sections) == 0 {
-		currentYear := strconv.Itoa(time.Now().Year())
+		var cs section.CalculationStatement
 
-		docString, err := s.repo.GetNextSequenceForYear(ctx, "CS", currentYear)
-		if err != nil {
-			return fmt.Errorf("failed calculating consecutive invoice numbers: %w", err)
-		}
-
-		cs := section.CalculationStatement{
-			DocumentNumber: docString,
-			Entries:        []*item.Item{},
-		}
-
-		built, err := cs.Build(ctx, &inv.ID, docString)
+		built, err := cs.Build(ctx, &inv.ID)
 		if err != nil {
 			return err
 		}
 		inv.Sections = []section.Section{built}
 	}
 
-	itemRepo := item.NewRepository(s.db)
-	allEntries := make([]*item.Item, 0)
-	for i := range inv.Sections {
-		allEntries = append(allEntries, inv.Sections[i].Entries...)
+	sections := make([]section.Section, 0, len(invoice.Sections))
+	for _, rqSec := range invoice.Sections {
+		sec := rqSec.ToSection()
+		// Push invoice-level payment fields into each section so they reach the DB.
+		// ToInvoice() sets them on inv.Sections but the repo.Create uses inv directly,
+		// while formula evaluation uses this separate sections slice — keep them in sync.
+		if invoice.PaymentDate != nil && sec.PaymentDate == nil {
+			sec.PaymentDate = invoice.PaymentDate
+		}
+		if invoice.PaymentReference != nil && sec.PaymentReference == nil {
+			sec.PaymentReference = invoice.PaymentReference
+		}
+		sections = append(sections, *sec)
 	}
+
+	// Flatten all entries (including nested children) for formula evaluation
+	allEntries := make([]*item.Item, 0)
+	for _, section := range sections {
+		allEntries = append(allEntries, s.flattenEntries(section.Entries)...)
+	}
+
 	if len(allEntries) > 0 {
-		if err := itemRepo.EvaluateFormulas(ctx, allEntries); err != nil {
+		if err := s.itemRepo.EvaluateFormulas(ctx, allEntries); err != nil {
 			return fmt.Errorf("formula evaluation failed: %w", err)
 		}
 	}
@@ -95,8 +108,8 @@ func (s *Service) Create(ctx context.Context, invoice *RqInvoice) error {
 
 	if invoice.Settings != nil {
 		for _, sec := range inv.Sections {
-			if sec.TemplateID != uuid.Nil {
-				if err := s.syncTemplateSettings(ctx, inv.ID, inv.ClinicID, sec.TemplateID, invoice.Settings); err != nil {
+			if *sec.InvoiceID != uuid.Nil {
+				if err := s.syncTemplateSettings(ctx, inv.ID, invoice.Settings); err != nil {
 					log.Printf("[SETTINGS-WARN] Failed propagating structural setting values: %v", err)
 				}
 			}
@@ -104,6 +117,18 @@ func (s *Service) Create(ctx context.Context, invoice *RqInvoice) error {
 	}
 
 	return nil
+}
+
+// flattenEntries recursively flattens nested item structures into a flat slice
+func (s *Service) flattenEntries(entries []*item.Item) []*item.Item {
+	result := make([]*item.Item, 0)
+	for _, entry := range entries {
+		result = append(result, entry)
+		if len(entry.Children) > 0 {
+			result = append(result, s.flattenEntries(entry.Children)...)
+		}
+	}
+	return result
 }
 
 // Delete implements [IService].
@@ -135,17 +160,26 @@ func (s *Service) List(ctx context.Context, filter *Filter) (*util.RsList, error
 		rsInvoices = append(rsInvoices, invoice.ToRsInvoiceSummary())
 	}
 
-	page := 1
-	if ft.Offset != nil && ft.Limit != nil && *ft.Limit > 0 {
-		page = (*ft.Offset / *ft.Limit) + 1
+	defaultLimit := 10
+	defaultOffset := 0
+
+	if filter.Limit != nil {
+		defaultLimit = *filter.Limit
+	}
+	if filter.Offset != nil {
+		defaultOffset = *filter.Offset
 	}
 
 	var rsList util.RsList
-	rsList.MapToList(rsInvoices, int(total), page, *ft.Limit)
+	rsList.MapToList(rsInvoices, int(total), defaultOffset, defaultLimit)
 	return &rsList, nil
 }
 
 func (s *Service) Update(ctx context.Context, invoice *RqUpdateInvoice) error {
+	if err := invoice.Validate(); err != nil {
+		return err
+	}
+
 	existing, err := s.repo.GetByID(ctx, s.db, *invoice.ID)
 	if err != nil {
 		return err
@@ -153,16 +187,36 @@ func (s *Service) Update(ctx context.Context, invoice *RqUpdateInvoice) error {
 
 	updatedInvoice := invoice.ApplyToInvoice(existing)
 
-	sections := make([]section.Section, 0)
+	sections := make([]section.Section, 0, len(invoice.Sections))
 	deleteItemIDs := make(map[uuid.UUID][]uuid.UUID)
 
 	for _, rqSec := range invoice.Sections {
 		sec := rqSec.ToSection()
 		sec.InvoiceID = invoice.ID
+		// Push invoice-level payment fields into each section so they reach the DB
+		// via UpdateWithSections → UpsertSections → updateSection.
+		if invoice.PaymentDate != nil && sec.PaymentDate == nil {
+			sec.PaymentDate = invoice.PaymentDate
+		}
+		if invoice.PaymentReference != nil && sec.PaymentReference == nil {
+			sec.PaymentReference = invoice.PaymentReference
+		}
 		sections = append(sections, *sec)
 
 		if len(rqSec.DeleteEntries) > 0 {
 			deleteItemIDs[sec.ID] = rqSec.DeleteEntries
+		}
+	}
+
+	// Flatten all entries (including nested children) for formula evaluation
+	allEntries := make([]*item.Item, 0)
+	for _, section := range sections {
+		allEntries = append(allEntries, s.flattenEntries(section.Entries)...)
+	}
+
+	if len(allEntries) > 0 {
+		if err := s.itemRepo.EvaluateFormulas(ctx, allEntries); err != nil {
+			return fmt.Errorf("formula evaluation failed: %w", err)
 		}
 	}
 
@@ -173,8 +227,8 @@ func (s *Service) Update(ctx context.Context, invoice *RqUpdateInvoice) error {
 
 	if invoice.Settings != nil {
 		for _, sec := range sections {
-			if sec.TemplateID != uuid.Nil {
-				if err := s.syncTemplateSettings(ctx, *invoice.ID, invoice.ClinicID, sec.TemplateID, invoice.Settings); err != nil {
+			if *sec.InvoiceID != uuid.Nil {
+				if err := s.syncTemplateSettings(ctx, *invoice.ID, invoice.Settings); err != nil {
 					log.Printf("[SETTINGS-WARN] Failed syncing updated layout template adjustments: %v", err)
 				}
 			}
@@ -185,7 +239,7 @@ func (s *Service) Update(ctx context.Context, invoice *RqUpdateInvoice) error {
 }
 
 func (s *Service) GetClinicTemplate(ctx context.Context, clinicID uuid.UUID) (*RsInvoiceMailTemplate, error) {
-	dbSubject, dbBody, err := s.repo.GetSavedClinicMailTemplate(ctx, clinicID)
+	dbSubject, dbBody, err := s.templateRepo.GetClinicMailTemplate(ctx, clinicID)
 	if err != nil {
 		dbSubject, dbBody = "", ""
 	}
@@ -200,7 +254,7 @@ func (s *Service) GetClinicTemplate(ctx context.Context, clinicID uuid.UUID) (*R
 }
 
 func (s *Service) SaveClinicTemplate(ctx context.Context, clinicID uuid.UUID, rq *RqSaveMailTemplate) error {
-	return s.repo.SaveClinicMailTemplate(ctx, clinicID, rq.Subject, rq.Body)
+	return s.templateRepo.SaveClinicMailTemplate(ctx, clinicID, rq.Subject, rq.Body)
 }
 
 func (s *Service) ResendInvoiceEmail(ctx context.Context, id uuid.UUID) error {
@@ -220,7 +274,7 @@ func (s *Service) ResendInvoiceEmail(ctx context.Context, id uuid.UUID) error {
 		return fmt.Errorf("failed to generate invoice attachment document: %w", err)
 	}
 
-	dbSubject, dbBody, err := s.repo.GetSavedClinicMailTemplate(ctx, rsInvoice.ClinicID)
+	dbSubject, dbBody, err := s.templateRepo.GetClinicMailTemplate(ctx, rsInvoice.ClinicID)
 	if err != nil {
 		dbSubject, dbBody = "", ""
 	}
@@ -230,19 +284,7 @@ func (s *Service) ResendInvoiceEmail(ctx context.Context, id uuid.UUID) error {
 
 	var documentNumber string
 	for _, sec := range rsInvoice.Sections {
-		if strings.ToUpper(strings.TrimSpace(string(sec.SectionType))) == "CALCULATION_STATEMENT" && sec.DocumentNumber != "" {
-			documentNumber = sec.DocumentNumber
-			break
-		}
-	}
-
-	// Fallback if Calculation Statement is unpopulated
-	if documentNumber == "" {
-		if len(rsInvoice.Sections) > 0 && rsInvoice.Sections[0].DocumentNumber != "" {
-			documentNumber = rsInvoice.Sections[0].DocumentNumber
-		} else {
-			documentNumber = rsInvoice.ID.String()[:8]
-		}
+		documentNumber = sec.DocumentNumber
 	}
 
 	subject, htmlBody := mail.RenderTemplateReplacements(chosenSubject, chosenBody, name, documentNumber)
@@ -257,18 +299,7 @@ func (s *Service) ResendInvoiceEmail(ctx context.Context, id uuid.UUID) error {
 }
 
 func (s *Service) compileInvoicePDF(ctx context.Context, inv *RsInvoice) (string, error) {
-	templateIDs := make([]uuid.UUID, 0, len(inv.Sections))
-	for _, sec := range inv.Sections {
-		if sec.TemplateID != uuid.Nil {
-			templateIDs = append(templateIDs, sec.TemplateID)
-		}
-	}
-
-	if len(templateIDs) == 0 {
-		return "", errors.New("invoice has no template configured")
-	}
-
-	pdfBytes, _, err := s.tplService.DownloadPDF(ctx, inv.ClinicID, templateIDs, inv.ID)
+	pdfBytes, _, err := s.tplService.DownloadPDF(ctx, inv.ClinicID, inv.ID)
 	if err != nil {
 		return "", fmt.Errorf("failed calling shared uniform download method engine: %w", err)
 	}
@@ -277,7 +308,7 @@ func (s *Service) compileInvoicePDF(ctx context.Context, inv *RsInvoice) (string
 }
 
 // Internal bridge mapper to parse and route structural customization configurations safely
-func (s *Service) syncTemplateSettings(ctx context.Context, invoiceID uuid.UUID, clinicID uuid.UUID, templateID uuid.UUID, src *RqInvoiceSetting) error {
+func (s *Service) syncTemplateSettings(ctx context.Context, invoiceID uuid.UUID, src *RqInvoiceSetting) error {
 	parseUUID := func(str *string) *uuid.UUID {
 		if str == nil || *str == "" {
 			return nil
@@ -288,68 +319,50 @@ func (s *Service) syncTemplateSettings(ctx context.Context, invoiceID uuid.UUID,
 		return nil
 	}
 
-	existingSetting, err := s.tplRepo.GetInvoiceSetting(ctx, clinicID, invoiceID, []uuid.UUID{templateID})
+	existingSetting, err := s.settingRepo.Get(ctx, invoiceID)
 	if err != nil {
-		return fmt.Errorf("failed verifying database settings mapping context: %w", err)
-	}
-
-	var existingMapping *template.Mapping
-	if existingSetting != nil && existingSetting.MappingId != nil {
-		existingMapping, err = s.tplRepo.GetMapping(ctx, *existingSetting.MappingId)
-		if err != nil {
-			return fmt.Errorf("failed verifying transactional database junction state: %w", err)
-		}
+		return fmt.Errorf("failed to fetch invoice settings context: %w", err)
 	}
 
 	var targetSettingID uuid.UUID
-	var targetMappingID uuid.UUID
-	isNewOverride := true
+	var isNewOverride bool
 
-	if existingMapping != nil && existingMapping.InvoiceID != nil && *existingMapping.InvoiceID == invoiceID {
-		isNewOverride = false
-		targetMappingID = existingMapping.ID
-		targetSettingID = existingMapping.SettingID
-	} else {
+	if existingSetting == nil {
 		targetSettingID = uuid.New()
-		targetMappingID = uuid.New()
+		isNewOverride = true
+	} else if existingSetting.InvoiceId == nil {
+		targetSettingID = uuid.New()
+		isNewOverride = true
+	} else {
+		targetSettingID = existingSetting.Id
+		isNewOverride = false
 	}
 
-	dbSetting := template.Setting{
+	// Convert to domain Setting
+	setting := common.Setting{
 		Id:               targetSettingID,
-		TemplateId:       templateID,
+		InvoiceId:        &invoiceID,
 		PrimaryColor:     lo.FromPtr(src.PrimaryColor),
 		AccentColor:      lo.FromPtr(src.AccentColor),
 		BodyFontFamily:   lo.FromPtr(src.BodyFontFamily),
 		HeaderFontFamily: lo.FromPtr(src.HeaderFontFamily),
 		IsLogo:           lo.FromPtr(src.IsLogo),
 		LogoId:           parseUUID(src.LogoID),
-		LetterHeadId:     parseUUID(src.LetterheadID),
-		FooterId:         parseUUID(src.FooterID),
 		TermText:         src.TermsText,
+		PaymentTerms:     src.PaymentTerms,
 		IsWaterMark:      lo.FromPtr(src.IsWatermark),
 		WaterMarkText:    src.WatermarkText,
-		IsTax:            lo.FromPtr(src.IsTax),
 		TableStyle:       src.TableStyle,
-		MappingId:        &targetMappingID,
 	}
 
+	// Convert template.Setting to domain.Setting
+
 	if isNewOverride {
-		if err := s.tplRepo.CreateSetting(ctx, &dbSetting); err != nil {
+		if err := s.settingRepo.Create(ctx, &setting); err != nil {
 			return fmt.Errorf("failed allocating specific template layout profile: %w", err)
 		}
-
-		m := template.Mapping{
-			ID:         targetMappingID,
-			InvoiceID:  &invoiceID,
-			TemplateID: templateID,
-			SettingID:  targetSettingID,
-			ClinicID:   &clinicID,
-		}
-		if err := s.tplRepo.CreateMapping(ctx, &m); err != nil {
-			return fmt.Errorf("failed linking relational structural mapping context: %w", err)
-		}
 	} else {
-		if err := s.tplRepo.UpdateSetting(ctx, &dbSetting, targetSettingID); err != nil {
+		if err := s.settingRepo.Update(ctx, &setting, invoiceID); err != nil {
 			return fmt.Errorf("failed overwriting specific layout configuration settings profile: %w", err)
 		}
 	}

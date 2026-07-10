@@ -1,6 +1,8 @@
 package invoice
 
 import (
+	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -8,6 +10,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/invoice/section"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/item"
 	"github.com/iamarpitzala/acareca/internal/shared/common"
+	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/samber/lo"
 )
 
@@ -20,7 +23,10 @@ type RqInvoice struct {
 	InvoiceFrequency  *string             `json:"invoiceFrequency,omitempty" validate:"omitempty,oneof=DAILY WEEKLY MONTHLY YEARLY"`
 	IssueDate         string              `json:"issueDate" validate:"required"`
 	DueDate           *string             `json:"dueDate,omitempty" validate:"omitempty"`
+	InvoiceMethod     *util.InvoiceType   `json:"invoiceMethod,omitempty" validate:"omitempty,oneof=SFA_CLINIC_COLLECTS SFA_DENTIST_COLLECTS INDEPENDENT_CONTRACTOR"`
 	Status            *string             `json:"status"`
+	PaymentDate       *string             `json:"paymentDate,omitempty"`
+	PaymentReference  *string             `json:"paymentReference,omitempty"`
 	Sections          []section.RqSection `json:"sections,omitempty" validate:"omitempty,dive"`
 	Settings          *RqInvoiceSetting   `json:"settings,omitempty"`
 }
@@ -32,13 +38,10 @@ type RqInvoiceSetting struct {
 	HeaderFontFamily *string `json:"headerFontFamily,omitempty"`
 	IsLogo           *bool   `json:"isLogo,omitempty"`
 	LogoID           *string `json:"logoId,omitempty"`
-	LetterheadID     *string `json:"letterheadId,omitempty"`
-	FooterID         *string `json:"footerId,omitempty"`
 	TermsText        *string `json:"termsText,omitempty"`
 	PaymentTerms     *string `json:"paymentTerms,omitempty"`
 	IsWatermark      *bool   `json:"isWatermark,omitempty"`
 	WatermarkText    *string `json:"watermarkText,omitempty"`
-	IsTax            *bool   `json:"isTax,omitempty"`
 	TableStyle       *string `json:"tableStyle,omitempty"`
 }
 
@@ -67,6 +70,15 @@ func (r *RqInvoice) ToInvoice() *Invoice {
 		if sec.InvoiceID == nil {
 			sec.InvoiceID = &invoiceID
 		}
+		// Push invoice-level paymentDate/paymentReference into each section
+		// so they are stored in tbl_map_invoice_section regardless of which
+		// section the frontend considers the "payment" section.
+		if r.PaymentDate != nil && sec.PaymentDate == nil {
+			sec.PaymentDate = r.PaymentDate
+		}
+		if r.PaymentReference != nil && sec.PaymentReference == nil {
+			sec.PaymentReference = r.PaymentReference
+		}
 		sections = append(sections, *sec)
 	}
 
@@ -82,6 +94,7 @@ func (r *RqInvoice) ToInvoice() *Invoice {
 		Status:            status,
 		DueDate:           dueDate,
 		Sections:          sections,
+		InvoiceMethod:     r.InvoiceMethod,
 		Settings:          r.Settings,
 	}
 }
@@ -96,7 +109,10 @@ type RqUpdateInvoice struct {
 	InvoiceFrequency  *string                   `json:"invoiceFrequency,omitempty" validate:"omitempty,oneof=DAILY WEEKLY MONTHLY YEARLY"`
 	IssueDate         *string                   `json:"issueDate,omitempty" validate:"omitempty,datetime=2006-01-02"`
 	DueDate           *string                   `json:"dueDate,omitempty" validate:"omitempty,datetime=2006-01-02"`
+	InvoiceMethod     *util.InvoiceType         `json:"invoiceMethod,omitempty" validate:"omitempty,oneof=SFA_CLINIC_COLLECTS SFA_DENTIST_COLLECTS INDEPENDENT_CONTRACTOR"`
 	Status            *string                   `json:"status,omitempty"`
+	PaymentDate       *string                   `json:"paymentDate,omitempty"`
+	PaymentReference  *string                   `json:"paymentReference,omitempty"`
 	Sections          []section.RqUpdateSection `json:"sections,omitempty" validate:"omitempty,dive"`
 	DeleteSections    []uuid.UUID               `json:"deleteSections,omitempty"`
 	AttachmentBase64  string                    `json:"attachmentBase64,omitempty"`
@@ -148,7 +164,7 @@ func (r *RqUpdateInvoice) ApplyToInvoice(inv *Invoice) *Invoice {
 			sec := rqSec.ToSection()
 
 			if existingSec, ok := existingSectionMap[sec.ID]; ok {
-				if sec.InvoiceSection == "" {
+				if sec.InvoiceSection == nil || *sec.InvoiceSection == "" {
 					sec.InvoiceSection = existingSec.InvoiceSection
 				}
 				if sec.InvoiceID == nil {
@@ -160,6 +176,21 @@ func (r *RqUpdateInvoice) ApplyToInvoice(inv *Invoice) *Invoice {
 					existingEntryMap := make(map[uuid.UUID]*item.Item)
 					for _, e := range existingSec.Entries {
 						existingEntryMap[e.ID] = e
+					}
+
+					// If the incoming payload explicitly sets is_final=true on any entry,
+					// clear is_final on ALL existing entries first so only one can be true.
+					incomingHasFinal := false
+					for _, rqEntry := range rqSec.Entries {
+						if rqEntry.IsFinal != nil && *rqEntry.IsFinal {
+							incomingHasFinal = true
+							break
+						}
+					}
+					if incomingHasFinal {
+						for _, e := range existingEntryMap {
+							e.IsFinal = false
+						}
 					}
 
 					for idx, entry := range sec.Entries {
@@ -212,6 +243,19 @@ func (r *RqUpdateInvoice) ApplyToInvoice(inv *Invoice) *Invoice {
 		inv.Sections = sections
 	}
 
+	// Push invoice-level paymentDate/paymentReference into sections for update too.
+	// Only applies to sections that don't already have them explicitly set.
+	if r.PaymentDate != nil || r.PaymentReference != nil {
+		for i := range inv.Sections {
+			if r.PaymentDate != nil && inv.Sections[i].PaymentDate == nil {
+				inv.Sections[i].PaymentDate = r.PaymentDate
+			}
+			if r.PaymentReference != nil && inv.Sections[i].PaymentReference == nil {
+				inv.Sections[i].PaymentReference = r.PaymentReference
+			}
+		}
+	}
+
 	if r.Settings != nil {
 		inv.Settings = r.Settings
 	}
@@ -227,9 +271,12 @@ type Invoice struct {
 	BillingPeriodFrom *string           `db:"billing_period_from"`
 	BillingPeriodTo   *string           `db:"billing_period_to"`
 	InvoiceFrequency  *string           `db:"invoice_frequency,omitempty"`
+	InvoiceMethod     *util.InvoiceType `db:"invoice_method,omitempty"`
 	IssueDate         time.Time         `db:"issue_date"`
 	DueDate           *time.Time        `db:"due_date,omitempty"`
 	Status            *string           `db:"status"`
+	PaymentDate       *string           `db:"-"`
+	PaymentReference  *string           `db:"-"`
 	ContactTo         *contact.Contact  `db:"-"`
 	Sections          []section.Section `db:"-"`
 	Settings          *RqInvoiceSetting `db:"-"`
@@ -253,9 +300,12 @@ func (i *Invoice) ToRsInvoiceSummary() *RsInvoiceSummary {
 		BillingPeriodFrom: lo.FromPtrOr(i.BillingPeriodFrom, ""),
 		BillingPeriodTo:   lo.FromPtrOr(i.BillingPeriodTo, ""),
 		InvoiceFrequency:  i.InvoiceFrequency,
+		InvoiceMethod:     i.InvoiceMethod,
 		IssueDate:         i.IssueDate,
 		DueDate:           i.DueDate,
 		Status:            i.Status,
+		PaymentDate:       i.PaymentDate,
+		PaymentReference:  i.PaymentReference,
 		CreatedAt:         i.CreatedAt,
 		UpdatedAt:         i.UpdatedAt,
 	}
@@ -282,6 +332,18 @@ func (i *Invoice) ToRsInvoice() *RsInvoice {
 		rsSection = append(rsSection, *v.ToRsSection())
 	}
 
+	// Hoist payment_date and payment_reference up to invoice level.
+	// These fields live on the REMITTANCE_INVOICE section in the DB;
+	// we surface them at the top level so callers don't have to dig into sections.
+	var paymentDate, paymentReference *string
+	for _, sec := range i.Sections {
+		if sec.PaymentDate != nil || sec.PaymentReference != nil {
+			paymentDate = sec.PaymentDate
+			paymentReference = sec.PaymentReference
+			break
+		}
+	}
+
 	return &RsInvoice{
 		ID:                i.ID,
 		ClinicID:          i.ClinicID,
@@ -295,6 +357,9 @@ func (i *Invoice) ToRsInvoice() *RsInvoice {
 		DueDate:           i.DueDate,
 		Status:            i.Status,
 		Sections:          rsSection,
+		InvoiceMethod:     i.InvoiceMethod,
+		PaymentDate:       paymentDate,
+		PaymentReference:  paymentReference,
 		CreatedAt:         i.CreatedAt,
 		UpdatedAt:         i.UpdatedAt,
 	}
@@ -306,12 +371,15 @@ type RsInvoiceSummary struct {
 	ContactID         *uuid.UUID         `json:"contactId,omitempty"`
 	ContactTo         *contact.RsContact `json:"contactTo,omitempty"`
 	Name              string             `json:"name"`
+	InvoiceMethod     *util.InvoiceType  `json:"invoiceMethod,omitempty"`
 	BillingPeriodFrom string             `json:"billingPeriodFrom"`
 	BillingPeriodTo   string             `json:"billingPeriodTo"`
 	InvoiceFrequency  *string            `json:"invoiceFrequency,omitempty"`
 	IssueDate         time.Time          `json:"issueDate"`
 	DueDate           *time.Time         `json:"dueDate,omitempty"`
 	Status            *string            `json:"status"`
+	PaymentDate       *string            `json:"paymentDate,omitempty"`
+	PaymentReference  *string            `json:"paymentReference,omitempty"`
 	CreatedAt         time.Time          `json:"createdAt"`
 	UpdatedAt         *time.Time         `json:"updatedAt"`
 }
@@ -328,17 +396,21 @@ type RsInvoice struct {
 	IssueDate         time.Time           `json:"issueDate"`
 	DueDate           *time.Time          `json:"dueDate,omitempty"`
 	Status            *string             `json:"status"`
+	InvoiceMethod     *util.InvoiceType   `json:"invoiceMethod,omitempty"`
+	PaymentDate       *string             `json:"paymentDate,omitempty"`
+	PaymentReference  *string             `json:"paymentReference,omitempty"`
 	Sections          []section.RsSection `json:"sections,omitempty"`
 	CreatedAt         time.Time           `json:"createdAt"`
 	UpdatedAt         *time.Time          `json:"updatedAt"`
 }
 
 type Filter struct {
-	Name      *string    `form:"name,omitempty"`
-	Status    *string    `form:"status,omitempty"`
-	ContactID *string    `form:"contact_id,omitempty"`
-	IssueDate *string    `form:"date_range,omitempty"`
-	ClinicId  *uuid.UUID `form:"-"`
+	Name          *string    `form:"name,omitempty"`
+	Status        *string    `form:"status,omitempty"`
+	ContactID     *string    `form:"contact_id,omitempty"`
+	IssueDate     *string    `form:"date_range,omitempty"`
+	ClinicId      *uuid.UUID `form:"-"`
+	InvoiceMethod *string    `form:"invoice_method,validate:omitempty,oneof=SFA_CLINIC_COLLECTS SFA_DENTIST_COLLECTS INDEPENDENT_CONTRACTOR"`
 	common.Filter
 }
 
@@ -411,6 +483,11 @@ func (filter *Filter) MapToFilter() common.Filter {
 		}
 	}
 
+	if filter.InvoiceMethod != nil {
+		filters["invoice_method"] = *filter.InvoiceMethod
+		operators["invoice_method"] = common.OpEq
+	}
+
 	return common.NewFilter(filter.Search, filters, operators, filter.Limit, filter.Offset, filter.SortBy, filter.OrderBy)
 }
 
@@ -423,4 +500,70 @@ type RsInvoiceMailTemplate struct {
 	Subject  string `json:"mail_subject"`
 	Body     string `json:"mail_body"`
 	IsCustom bool   `json:"is_custom"`
+}
+
+var allowedSectionTypesByInvoiceMethod = map[util.InvoiceType]map[section.SectionType]bool{
+	util.InvoiceTypeSFAClinicCollects: {
+		section.CALCULATIONSTATEMENT: true,
+		section.TAXINVOICE:           true,
+		section.REMITTANCEINVOICE:    true,
+	},
+	util.InvoiceTypeSFADentistCollects: {
+		section.CALCULATIONSTATEMENT: true,
+		section.TAXINVOICE:           true,
+	},
+	util.InvoiceTypeIndependentContractor: {
+		section.CALCULATIONSTATEMENT: true,
+		section.RCTI:                 true,
+		section.REMITTANCEINVOICE:    true,
+	},
+}
+
+func (rq *RqInvoice) Validate() error {
+	if rq.ClinicID == uuid.Nil {
+		return errors.New("clinic ID is required")
+	}
+
+	if rq.InvoiceMethod == nil {
+		return errors.New("invoice method is required")
+	}
+
+	allowed, ok := allowedSectionTypesByInvoiceMethod[*rq.InvoiceMethod]
+	if !ok {
+		return fmt.Errorf("invalid invoice method: %v", *rq.InvoiceMethod)
+	}
+
+	for _, sec := range rq.Sections {
+		if !allowed[sec.SectionType] {
+			return fmt.Errorf("invalid section type %v for invoice method %v", sec.SectionType, *rq.InvoiceMethod)
+		}
+	}
+
+	return nil
+}
+
+func (rq *RqUpdateInvoice) Validate() error {
+	if rq.ClinicID == uuid.Nil {
+		return errors.New("clinic ID is required")
+	}
+
+	if rq.InvoiceMethod == nil {
+		return errors.New("invoice method is required")
+	}
+
+	allowed, ok := allowedSectionTypesByInvoiceMethod[*rq.InvoiceMethod]
+	if !ok {
+		return fmt.Errorf("invalid invoice method: %v", *rq.InvoiceMethod)
+	}
+
+	for _, sec := range rq.Sections {
+		if sec.SectionType == nil {
+			return errors.New("section type is required")
+		}
+		if !allowed[*sec.SectionType] {
+			return fmt.Errorf("invalid section type %v for invoice method %v", sec.SectionType, *rq.InvoiceMethod)
+		}
+	}
+
+	return nil
 }

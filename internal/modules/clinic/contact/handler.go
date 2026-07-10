@@ -113,6 +113,7 @@ func (h *handler) Get(c *gin.Context) {
 // @Tags clinic-contact
 // @Accept json
 // @Produce json
+// @Param role query string false "DENTIST or PATIENT"
 // @Success 200 {object} util.RsList
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError

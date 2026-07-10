@@ -14,6 +14,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
+	"github.com/iamarpitzala/acareca/internal/shared/common"
 	sharednotification "github.com/iamarpitzala/acareca/internal/shared/notification"
 	"github.com/iamarpitzala/acareca/internal/shared/upload"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
@@ -34,9 +35,9 @@ type AuthService interface {
 }
 
 type Service interface {
-	GetDocument(ctx context.Context, id uuid.UUID, userID uuid.UUID) (*RsDocument, error)
-	ListDocuments(ctx context.Context, userID uuid.UUID, filters *RqListDocuments) (*util.RsList, error)
-	UpdateDocument(ctx context.Context, id uuid.UUID, req *RqUpdateDocument, userID uuid.UUID) (*RsDocument, error)
+	GetDocument(ctx context.Context, id uuid.UUID, userID uuid.UUID) (*common.RsDocument, error)
+	ListDocuments(ctx context.Context, userID uuid.UUID, filters *RqListDocument) (*util.RsList, error)
+	UpdateDocument(ctx context.Context, id uuid.UUID, req *RqUpdateDocument, userID uuid.UUID) (*common.RsDocument, error)
 	DeleteDocument(ctx context.Context, id uuid.UUID, userID uuid.UUID) error
 	GeneratePresignedUploadURL(ctx context.Context, req *RqGeneratePresignedUploadURL, ownerID uuid.UUID, ownerRole string, file multipart.File, header *multipart.FileHeader) (*RsPresignedUploadURL, error)
 }
@@ -47,10 +48,10 @@ type service struct {
 	validator       *upload.FileValidator
 	cfg             *config.Config
 	db              *sqlx.DB
-	auditSvc        audit.Service
 	bucket          string
 	notificationPub *sharednotification.Publisher
 	invitationRepo  invitation.Repository
+	auditSvc        audit.Service
 	authSvc         AuthService
 }
 
@@ -61,16 +62,16 @@ func NewService(repo Repository, storage upload.StorageProvider, validator *uplo
 		validator:       validator,
 		cfg:             cfg,
 		db:              db,
-		auditSvc:        auditSvc,
 		bucket:          cfg.R2BucketName,
 		notificationPub: sharednotification.NewPublisher(notification.NewServiceAdapter(notificationSvc), adminRepo),
 		invitationRepo:  invitationRepo,
+		auditSvc:        auditSvc,
 		authSvc:         authSvc,
 	}
 }
 
 // GetDocument retrieves document metadata
-func (s *service) GetDocument(ctx context.Context, id uuid.UUID, userID uuid.UUID) (*RsDocument, error) {
+func (s *service) GetDocument(ctx context.Context, id uuid.UUID, userID uuid.UUID) (*common.RsDocument, error) {
 	doc, err := s.repo.FindByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -84,14 +85,14 @@ func (s *service) GetDocument(ctx context.Context, id uuid.UUID, userID uuid.UUI
 }
 
 // ListDocuments lists documents for a user
-func (s *service) ListDocuments(ctx context.Context, userID uuid.UUID, filters *RqListDocuments) (*util.RsList, error) {
+func (s *service) ListDocuments(ctx context.Context, userID uuid.UUID, filters *RqListDocument) (*util.RsList, error) {
 
 	docs, total, err := s.repo.FindByOwner(ctx, userID, filters)
 	if err != nil {
 		return nil, err
 	}
 
-	rsDocs := make([]RsDocument, len(docs))
+	rsDocs := make([]common.RsDocument, len(docs))
 	for i, doc := range docs {
 		rsDocs[i] = *doc.ToRsDocument()
 	}
@@ -102,7 +103,7 @@ func (s *service) ListDocuments(ctx context.Context, userID uuid.UUID, filters *
 }
 
 // UpdateDocument updates document metadata
-func (s *service) UpdateDocument(ctx context.Context, id uuid.UUID, req *RqUpdateDocument, userID uuid.UUID) (*RsDocument, error) {
+func (s *service) UpdateDocument(ctx context.Context, id uuid.UUID, req *RqUpdateDocument, userID uuid.UUID) (*common.RsDocument, error) {
 	doc, err := s.repo.FindByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -124,7 +125,7 @@ func (s *service) UpdateDocument(ctx context.Context, id uuid.UUID, req *RqUpdat
 		doc.IsPublic = *req.IsPublic
 	}
 
-	var updated *Document
+	var updated *common.Document
 	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		var txErr error
 		updated, txErr = s.repo.Update(ctx, doc, tx)
@@ -144,7 +145,7 @@ func (s *service) UpdateDocument(ctx context.Context, id uuid.UUID, req *RqUpdat
 
 // DeleteDocument deletes a document
 func (s *service) DeleteDocument(ctx context.Context, id uuid.UUID, userID uuid.UUID) error {
-	var doc *Document
+	var doc *common.Document
 	err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		var txErr error
 		doc, txErr = s.repo.FindByID(ctx, id)
@@ -184,14 +185,14 @@ func (s *service) DeleteDocument(ctx context.Context, id uuid.UUID, userID uuid.
 }
 
 // GeneratePresignedUploadURL generates a presigned URL for direct client upload to R2.
-func (s *service) GeneratePresignedUploadURL(ctx context.Context, req *RqGeneratePresignedUploadURL, ownerID uuid.UUID, ownerRole string, file multipart.File, header *multipart.FileHeader) (*RsPresignedUploadURL, error) {
+func (s *service) GeneratePresignedUploadURL(ctx context.Context, req *RqGeneratePresignedUploadURL, ownerID uuid.UUID, ownerRole string, multipartFile multipart.File, header *multipart.FileHeader) (*RsPresignedUploadURL, error) {
 	presignedProvider, ok := s.storage.(upload.PresignedURLProvider)
 	if !ok {
 		return nil, errors.New("presigned URLs not supported by current storage provider")
 	}
 
 	// Validate file size and detect MIME type from actual file bytes (not client header).
-	if err := s.validator.Validate(file, header); err != nil {
+	if err := s.validator.Validate(multipartFile, header); err != nil {
 		return nil, fmt.Errorf("%w", err)
 	}
 
@@ -212,7 +213,7 @@ func (s *service) GeneratePresignedUploadURL(ctx context.Context, req *RqGenerat
 	}
 
 	ext := upload.GetFileExtension(header.Filename)
-	doc := &Document{
+	doc := &common.Document{
 		OwnerID:      ownerID,
 		OwnerRole:    ownerRole,
 		ObjectKey:    objectKey,
@@ -231,7 +232,7 @@ func (s *service) GeneratePresignedUploadURL(ctx context.Context, req *RqGenerat
 	// Calculate presigned URL expiration for response
 	expiresAt := time.Now().Add(expiresIn)
 
-	var created *Document
+	var created *common.Document
 	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		var txErr error
 		created, txErr = s.repo.Create(ctx, doc, tx)
@@ -270,7 +271,7 @@ func (s *service) GeneratePresignedUploadURL(ctx context.Context, req *RqGenerat
 }
 
 // canAccessDocument checks if user can access a document
-func (s *service) canAccessDocument(doc *Document, userID uuid.UUID) bool {
+func (s *service) canAccessDocument(doc *common.Document, userID uuid.UUID) bool {
 	if doc.OwnerID == userID {
 		return true
 	}
@@ -282,7 +283,7 @@ func (s *service) canAccessDocument(doc *Document, userID uuid.UUID) bool {
 
 // Audit logging helpers
 
-func (s *service) logFileUpload(ctx context.Context, doc *Document, userID uuid.UUID) {
+func (s *service) logFileUpload(ctx context.Context, doc *common.Document, userID uuid.UUID) {
 	userIDStr := userID.String()
 	docIDStr := doc.ID.String()
 
@@ -300,7 +301,7 @@ func (s *service) logFileUpload(ctx context.Context, doc *Document, userID uuid.
 	})
 }
 
-func (s *service) logFileUpdate(ctx context.Context, doc *Document, userID uuid.UUID, beforeState map[string]interface{}) {
+func (s *service) logFileUpdate(ctx context.Context, doc *common.Document, userID uuid.UUID, beforeState map[string]interface{}) {
 	userIDStr := userID.String()
 	docIDStr := doc.ID.String()
 
@@ -318,7 +319,7 @@ func (s *service) logFileUpdate(ctx context.Context, doc *Document, userID uuid.
 	})
 }
 
-func (s *service) logFileDelete(ctx context.Context, doc *Document, userID uuid.UUID) {
+func (s *service) logFileDelete(ctx context.Context, doc *common.Document, userID uuid.UUID) {
 	userIDStr := userID.String()
 	docIDStr := doc.ID.String()
 
