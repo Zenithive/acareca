@@ -105,8 +105,6 @@ func TaxInvoiceHTML() string {
     <p style="font-style: italic; margin-bottom: 4px;">
       {{#if is_method_b}}
       Patient fees for the period were collected directly by the dentist. This tax invoice is the clinic's service &amp; facility fee (plus any costs paid by the clinic) and is payable by the dentist to the clinic at the account above.
-      {{else}}
-      Payment terms: This invoice is settled by offset against patient fees collected on your behalf. No payment is required—refer to the attached Remittance Advice for the net amount payable to you.
       {{/if}}
     </p>
   </div>

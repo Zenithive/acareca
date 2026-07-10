@@ -2763,6 +2763,10 @@ definitions:
         type: string
       name:
         type: string
+      paymentDate:
+        type: string
+      paymentReference:
+        type: string
       sections:
         items:
           $ref: '#/definitions/section.RqSection'
@@ -2851,6 +2855,10 @@ definitions:
         type: string
       name:
         type: string
+      paymentDate:
+        type: string
+      paymentReference:
+        type: string
       sections:
         items:
           $ref: '#/definitions/section.RqUpdateSection'
@@ -2885,6 +2893,10 @@ definitions:
       issueDate:
         type: string
       name:
+        type: string
+      paymentDate:
+        type: string
+      paymentReference:
         type: string
       sections:
         items:

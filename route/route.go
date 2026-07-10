@@ -236,19 +236,20 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 		log.Fatalf("failed to initialize template container: %v", err)
 	}
 
+	clinicAuthRepo := clinicauth.NewRepository(dbConn)
+
 	// Inject service factory to avoid circular dependency
 	templateContainer.SetServiceFactory(func(
 		cfg *config.Config,
 		templateRepo templateRepository.ITemplateRepository,
 		settingRepo templateRepository.ISettingRepository,
 	) template.IService {
-		return templateService.NewCompositeServiceWithDB(dbConn, cfg, templateRepo, settingRepo)
+		return templateService.NewCompositeServiceWithDB(dbConn, cfg, templateRepo, settingRepo, clinicAuthRepo)
 	})
 
 	tempSvc := templateContainer.Service()
 	RegisterInvoiceRoutes(v1, cfg, dbConn, auditSvc, tempSvc, templateContainer)
 
-	clinicAuthRepo := clinicauth.NewRepository(dbConn)
 	clinicAuthSvc := clinicauth.NewService(clinicAuthRepo, cfg, dbConn, auditSvc, tempSvc)
 
 	contactSvc := contact.NewService(contact.NewRepository(dbConn))

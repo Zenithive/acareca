@@ -54,7 +54,7 @@ func DefaultSettings(templateId uuid.UUID) common.Setting {
 		AccentColor:      "#5f96b4",
 		BodyFontFamily:   "Arial",
 		HeaderFontFamily: "Arial",
-		IsLogo:           true,
+		IsLogo:           false,
 		LogoId:           nil,
 		TermText:         &termText,
 		PaymentTerms:     &paymentTerms,
