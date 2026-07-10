@@ -209,8 +209,9 @@ func (s *PDFService) DownloadPDF(ctx context.Context, clinicId uuid.UUID, invoic
 	}
 	finalRenderMap := dataBuilder.Build()
 
-	// 5. Fetch, decrypt, and concatenate templates in page order
-	var htmlBuilder, cssBuilder strings.Builder
+	// 5. Fetch, decrypt, and render each template page individually with its specific context
+	var renderedPagesBuilder strings.Builder
+
 	for _, name := range templateNames {
 		t, err := s.templateRepo.GetByName(ctx, name)
 		if err != nil {
@@ -226,20 +227,36 @@ func (s *PDFService) DownloadPDF(ctx context.Context, clinicId uuid.UUID, invoic
 			return nil, "", fmt.Errorf("template %q exceeds size limit: %w", name, err)
 		}
 
-		htmlBuilder.WriteString(html)
-		htmlBuilder.WriteString("\n")
-		cssBuilder.WriteString(css)
-		cssBuilder.WriteString("\n")
+		// Create a localized clone of the context map specifically for this page
+		pageRenderMap := make(map[string]interface{})
+		for k, v := range finalRenderMap {
+			pageRenderMap[k] = v
+		}
+
+		// Assign the specific document number to 'invoice_number' context based on template category
+		nameUpper := strings.ToUpper(name)
+		if ts, ok := finalRenderMap["template_settings"].(map[string]interface{}); ok {
+			if strings.Contains(nameUpper, "CALCULATION") {
+				pageRenderMap["invoice_number"] = ts["calculation_invoice_number"]
+			} else if strings.Contains(nameUpper, "TAX") || strings.Contains(nameUpper, "SFA") || strings.Contains(nameUpper, "COMMISSION") || strings.Contains(nameUpper, "RCTI") {
+				pageRenderMap["invoice_number"] = ts["tax_invoice_number"]
+			} else if strings.Contains(nameUpper, "REMITTANCE") || strings.Contains(nameUpper, "SETTLEMENT") {
+				pageRenderMap["invoice_number"] = ts["remittance_invoice_number"]
+			}
+		}
+
+		// Compile this template page explicitly with its specific localized invoice number
+		compiledPageHTML, err := chromepdf.Render(html, css, pageRenderMap)
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to compile page template %q: %w", name, err)
+		}
+
+		renderedPagesBuilder.WriteString(compiledPageHTML)
+		renderedPagesBuilder.WriteString("\n")
 	}
 
-	// 7. Compile Handlebars context into final HTML
-	fullHTML, err := chromepdf.Render(htmlBuilder.String(), cssBuilder.String(), finalRenderMap)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to compile layout with data context: %w", err)
-	}
-
-	// 8. Render to PDF via headless Chromium
-	pdfBytes, err := s.renderer.RenderToPDF(ctx, fullHTML)
+	// 6. Render the concatenated multi-page HTML stream to PDF via headless Chromium
+	pdfBytes, err := s.renderer.RenderToPDF(ctx, renderedPagesBuilder.String())
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to generate final PDF document: %w", err)
 	}

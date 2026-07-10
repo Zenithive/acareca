@@ -83,15 +83,13 @@ func CalculationHTML() string {
 
   <div class="footer-notes-box">
     {{#if notes}}
-    <p style="margin-top: 4px; font-weight: normal; color: var(--text-dark);"><strong>Notes:</strong> {{notes}}</p>
+    <p style="font-style: italic; margin-top: 4px;">Notes: {{notes}}</p>
     {{else}}
       {{#if template_settings.terms_text}}
-      <p style="margin-top: 4px; font-weight: normal; color: var(--text-dark);"><strong>Notes:</strong> {{template_settings.terms_text}}</p>
+      <p style="font-style: italic; margin-top: 4px;">Notes: {{template_settings.terms_text}}</p>
       {{else}}
         {{#if footer_note}}
-        <p style="margin-top: 4px; font-weight: normal; color: var(--text-dark);"><strong>Notes:</strong> {{footer_note}}</p>
-        {{else}}
-        <p style="font-style: italic; margin-bottom: 4px;">Notes: Total patient fees, GST collected (1A) and laboratory fees are sourced from the practice management system for the billing period. Highlighted rows indicate data input variables; all other figures are calculated. BAS codes are shown for the clinic's activity statement.</p>
+        <p style="font-style: italic; margin-top: 4px;">Notes: {{footer_note}}</p>
         {{/if}}
       {{/if}}
     {{/if}}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/clinic/auth"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/template"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/template/repository"
 	"github.com/iamarpitzala/acareca/internal/shared/common"
@@ -15,16 +16,18 @@ type ISetting interface {
 	Get(ctx context.Context, invoiceId uuid.UUID) (*common.RsSetting, error)
 	Update(ctx context.Context, rq template.RqUpdateSetting) (*common.RsSetting, error)
 	CreateDefaultForTemplate(ctx context.Context, templateId uuid.UUID) error
-	// EnrichWithDocuments(ctx context.Context, st *common.Setting) error
+	EnrichWithDocuments(ctx context.Context, st *common.Setting) error
 }
 
 type Setting struct {
-	repo repository.ISettingRepository
+	repo     repository.ISettingRepository
+	authRepo auth.Repository
 }
 
-func NewSetting(repo repository.ISettingRepository) ISetting {
+func NewSetting(repo repository.ISettingRepository, authRepo auth.Repository) ISetting {
 	return &Setting{
-		repo: repo,
+		repo:     repo,
+		authRepo: authRepo,
 	}
 }
 
@@ -40,9 +43,9 @@ func (s *Setting) Get(ctx context.Context, invoiceId uuid.UUID) (*common.RsSetti
 		return &rs, nil
 	}
 
-	// if err := s.EnrichWithDocuments(ctx, st); err != nil {
-	// 	return nil, fmt.Errorf("failed enriching setting documents: %w", err)
-	// }
+	if err := s.EnrichWithDocuments(ctx, st); err != nil {
+		return nil, fmt.Errorf("failed enriching setting documents: %w", err)
+	}
 
 	rs := st.ToRs()
 	return &rs, nil
@@ -62,12 +65,12 @@ func (s *Setting) CreateDefaultForTemplate(ctx context.Context, templateId uuid.
 	return s.repo.Create(ctx, &st)
 }
 
-// func (s *Setting) EnrichWithDocuments(ctx context.Context, st *common.Setting) error {
-// 	if st.LogoId != nil {
-// 		doc, err := s.docRepo.GetDocumentByID(ctx, *st.LogoId)
-// 		if err == nil && doc != nil {
-// 			st.Logo = doc
-// 		}
-// 	}
-// 	return nil
-// }
+func (s *Setting) EnrichWithDocuments(ctx context.Context, st *common.Setting) error {
+	if st.LogoId != nil {
+		doc, err := s.authRepo.GetDocumentByID(ctx, st.LogoId)
+		if err == nil && doc != nil {
+			st.Logo = doc
+		}
+	}
+	return nil
+}

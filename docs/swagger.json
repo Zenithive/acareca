@@ -15287,6 +15287,12 @@
                 "name": {
                     "type": "string"
                 },
+                "paymentDate": {
+                    "type": "string"
+                },
+                "paymentReference": {
+                    "type": "string"
+                },
                 "sections": {
                     "type": "array",
                     "items": {
@@ -15411,6 +15417,12 @@
                 "name": {
                     "type": "string"
                 },
+                "paymentDate": {
+                    "type": "string"
+                },
+                "paymentReference": {
+                    "type": "string"
+                },
                 "sections": {
                     "type": "array",
                     "items": {
@@ -15462,6 +15474,12 @@
                     "type": "string"
                 },
                 "name": {
+                    "type": "string"
+                },
+                "paymentDate": {
+                    "type": "string"
+                },
+                "paymentReference": {
                     "type": "string"
                 },
                 "sections": {

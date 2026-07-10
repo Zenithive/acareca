@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/clinic/auth"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/template"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/template/render"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/template/repository"
@@ -22,10 +23,10 @@ type CompositeService struct {
 
 // NewCompositeServiceWithDB creates a CompositeService with full invoice method resolution.
 // Pass db so that DownloadPDF can fetch the billing method from the invoice record.
-func NewCompositeServiceWithDB(db *sqlx.DB, cfg *config.Config, templateRepo repository.ITemplateRepository, settingRepo repository.ISettingRepository) *CompositeService {
+func NewCompositeServiceWithDB(db *sqlx.DB, cfg *config.Config, templateRepo repository.ITemplateRepository, settingRepo repository.ISettingRepository, authRepo auth.Repository) *CompositeService {
 	encryptionSvc := NewEncryptionService(cfg.TemplateEncryptionKey)
 
-	settingSvc := NewSetting(settingRepo)
+	settingSvc := NewSetting(settingRepo, authRepo)
 	templateSvc := NewTemplateService(templateRepo, encryptionSvc, settingSvc)
 	renderer := render.NewChromeRenderer()
 
@@ -41,7 +42,6 @@ func NewCompositeServiceWithDB(db *sqlx.DB, cfg *config.Config, templateRepo rep
 		syncSvc:     syncSvc,
 	}
 }
-
 
 func (cs *CompositeService) BulkCreate(ctx context.Context) (*[]template.RsTemplate, error) {
 	commonRs, err := cs.templateSvc.BulkCreate(ctx)

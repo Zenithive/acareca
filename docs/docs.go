@@ -15295,6 +15295,12 @@ const docTemplate = `{
                 "name": {
                     "type": "string"
                 },
+                "paymentDate": {
+                    "type": "string"
+                },
+                "paymentReference": {
+                    "type": "string"
+                },
                 "sections": {
                     "type": "array",
                     "items": {
@@ -15419,6 +15425,12 @@ const docTemplate = `{
                 "name": {
                     "type": "string"
                 },
+                "paymentDate": {
+                    "type": "string"
+                },
+                "paymentReference": {
+                    "type": "string"
+                },
                 "sections": {
                     "type": "array",
                     "items": {
@@ -15470,6 +15482,12 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "name": {
+                    "type": "string"
+                },
+                "paymentDate": {
+                    "type": "string"
+                },
+                "paymentReference": {
                     "type": "string"
                 },
                 "sections": {

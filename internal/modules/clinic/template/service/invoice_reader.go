@@ -209,34 +209,34 @@ func (r *dbInvoiceReader) GetInvoiceRenderData(ctx context.Context, invoiceId uu
 
 	// ── 2. Sections (Extracting explicit document numbers from DB) ──────────
 	const secQ = `
-		SELECT id::text AS section_id, invoice_section, document_number, COALESCE(payment_date::text, '') AS payment_date
+		SELECT id::text AS section_id, invoice_section, document_number, parent_section_id::text AS parent_section_id, COALESCE(payment_date::text, '') AS payment_date
 		FROM tbl_map_invoice_section
 		WHERE invoice_id = $1 AND deleted_at IS NULL
 		ORDER BY created_at ASC
 	`
 	type secRow struct {
-		SectionID      sql.NullString `db:"section_id"`
-		SectionType    sql.NullString `db:"invoice_section"`
-		DocumentNumber sql.NullString `db:"document_number"`
-		PaymentDate    sql.NullString `db:"payment_date"`
+		SectionID       sql.NullString `db:"section_id"`
+		SectionType     sql.NullString `db:"invoice_section"`
+		DocumentNumber  sql.NullString `db:"document_number"`
+		ParentSectionID sql.NullString `db:"parent_section_id"`
+		PaymentDate     sql.NullString `db:"payment_date"`
 	}
 	secRows, err := r.db.QueryxContext(ctx, secQ, invoiceId)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch sections: %w", err)
 	}
 	defer secRows.Close()
-	var sections []secRow
-	validSectionIDs := make(map[string]bool)
 
 	var calculationDocNo, taxInvoiceDocNo, remittanceDocNo string
 	var invoiceNumber, paymentDate string
+	validSectionIDs := make(map[string]bool)
 
 	for secRows.Next() {
 		var s secRow
 		if err := secRows.StructScan(&s); err != nil {
 			return nil, fmt.Errorf("failed to scan section: %w", err)
 		}
-		sections = append(sections, s)
+
 		if s.SectionID.String != "" {
 			validSectionIDs[s.SectionID.String] = true
 		}
@@ -245,22 +245,25 @@ func (r *dbInvoiceReader) GetInvoiceRenderData(ctx context.Context, invoiceId uu
 			paymentDate = reformatToDDMMYYYY(s.PaymentDate.String)
 		}
 
-		secTypeUpper := strings.ToUpper(strings.TrimSpace(s.SectionType.String))
-		switch secTypeUpper {
-		case "CALCULATION_STATEMENT":
-			calculationDocNo = s.DocumentNumber.String
-			if invoiceNumber == "" {
-				invoiceNumber = s.DocumentNumber.String
-			}
-		case "SFA_INVOICE", "TAX_INVOICE", "COMMISSION", "RCTI":
-			taxInvoiceDocNo = s.DocumentNumber.String
-			if invoiceNumber == "" {
-				invoiceNumber = s.DocumentNumber.String
-			}
-		case "REMITTANCE_INVOICE", "REMITTANCE_ADVICE", "NET_SETTLEMENT":
-			remittanceDocNo = s.DocumentNumber.String
-			if invoiceNumber == "" {
-				invoiceNumber = s.DocumentNumber.String
+		// Extract Document Numbers from the parent containers
+		if !s.ParentSectionID.Valid || s.ParentSectionID.String == "" {
+			secTypeUpper := strings.ToUpper(strings.TrimSpace(s.SectionType.String))
+			switch secTypeUpper {
+			case "CALCULATION_STATEMENT":
+				calculationDocNo = s.DocumentNumber.String
+				if invoiceNumber == "" {
+					invoiceNumber = s.DocumentNumber.String
+				}
+			case "SFA_INVOICE", "TAX_INVOICE", "COMMISSION", "RCTI":
+				taxInvoiceDocNo = s.DocumentNumber.String
+				if invoiceNumber == "" {
+					invoiceNumber = s.DocumentNumber.String
+				}
+			case "REMITTANCE_INVOICE", "REMITTANCE_ADVICE", "NET_SETTLEMENT":
+				remittanceDocNo = s.DocumentNumber.String
+				if invoiceNumber == "" {
+					invoiceNumber = s.DocumentNumber.String
+				}
 			}
 		}
 	}
@@ -330,8 +333,6 @@ func (r *dbInvoiceReader) GetInvoiceRenderData(ctx context.Context, invoiceId uu
 		}
 	}
 	_ = itemRowsCursor.Err()
-
-	log.Printf("invoice %s: fetched %d raw item rows from tbl_invoice_item", invoiceId, len(allItems))
 
 	// ── 4. Derive display values using strict DD-MM-YYYY layout ──────────────
 	issueDateDisplay := reformatToDDMMYYYY(core.IssueDate.String)
