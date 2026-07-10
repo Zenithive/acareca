@@ -46,7 +46,7 @@ func newAllocator(ctx context.Context) (context.Context, context.CancelFunc) {
 			chromedp.Flag("no-crashpad", true),
 			chromedp.Flag("disable-crash-reporter", true),
 			chromedp.Flag("crash-dumps-dir", "/tmp"),
-			chromedp.Flag("disable-background-networking", true),
+			// chromedp.Flag("disable-background-networking", true),
 			chromedp.Flag("disable-default-apps", true),
 			chromedp.Flag("disable-features", "CrashpadHandlerOnBrowser"),
 			chromedp.UserDataDir("/tmp/chromedp-profile"),

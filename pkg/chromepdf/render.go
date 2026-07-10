@@ -91,6 +91,20 @@ func Render(html, css string, data map[string]any) (string, error) {
 		return "", fmt.Errorf("chromepdf: html render failed: %w", err)
 	}
 
+	// Dynamic external resource pre-connect setup
+	var fontLinks strings.Builder
+	if ts, ok := data["template_settings"].(map[string]any); ok {
+		fontLinks.WriteString(`<link rel="preconnect" href="https://fonts.googleapis.com">`)
+		fontLinks.WriteString(`<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>`)
+
+		if headerFont, _ := ts["header_font_family_css"].(string); headerFont != "" {
+			fontLinks.WriteString(fmt.Sprintf(`<link href="https://fonts.googleapis.com/css2?family=%s:wght@400;700&display=swap" rel="stylesheet">`, headerFont))
+		}
+		if bodyFont, _ := ts["body_font_family_css"].(string); bodyFont != "" {
+			fontLinks.WriteString(fmt.Sprintf(`<link href="https://fonts.googleapis.com/css2?family=%s:wght@400;700&display=swap" rel="stylesheet">`, bodyFont))
+		}
+	}
+
 	// Wrap in a full HTML document so Chrome has a proper DOM
 	return fmt.Sprintf(`<!DOCTYPE html>
 <html>

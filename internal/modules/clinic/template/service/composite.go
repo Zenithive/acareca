@@ -31,7 +31,7 @@ func NewCompositeServiceWithDB(db *sqlx.DB, cfg *config.Config, templateRepo rep
 	renderer := render.NewChromeRenderer()
 
 	invoiceReader := newDBInvoiceReader(db)
-	pdfSvc := NewPDFServiceWithInvoiceReader(templateRepo, settingRepo, invoiceReader, encryptionSvc, renderer, cfg)
+	pdfSvc := NewPDFServiceWithInvoiceReader(templateRepo, settingSvc, invoiceReader, encryptionSvc, renderer, cfg)
 
 	syncSvc := NewSyncService(templateRepo, settingRepo, encryptionSvc)
 

@@ -33,7 +33,7 @@ type IPDF interface {
 
 type PDFService struct {
 	templateRepo  repository.ITemplateRepository
-	settingRepo   repository.ISettingRepository
+	settingSvc    ISetting
 	invoiceReader IInvoiceReader
 	encryption    IEncryptionService
 	renderer      render.IPDFRenderer
@@ -41,10 +41,10 @@ type PDFService struct {
 	cfg           *config.Config
 }
 
-func NewPDFService(templateRepo repository.ITemplateRepository, settingRepo repository.ISettingRepository, encryption IEncryptionService, renderer render.IPDFRenderer, cfg *config.Config) IPDF {
+func NewPDFService(templateRepo repository.ITemplateRepository, settingSvc ISetting, encryption IEncryptionService, renderer render.IPDFRenderer, cfg *config.Config) IPDF {
 	return &PDFService{
 		templateRepo: templateRepo,
-		settingRepo:  settingRepo,
+		settingSvc:   settingSvc,
 		encryption:   encryption,
 		renderer:     renderer,
 		dataMapper:   render.NewDataMapper(),
@@ -53,10 +53,10 @@ func NewPDFService(templateRepo repository.ITemplateRepository, settingRepo repo
 }
 
 // NewPDFServiceWithInvoiceReader creates a PDFService with an invoice reader for billing method resolution.
-func NewPDFServiceWithInvoiceReader(templateRepo repository.ITemplateRepository, settingRepo repository.ISettingRepository, invoiceReader IInvoiceReader, encryption IEncryptionService, renderer render.IPDFRenderer, cfg *config.Config) IPDF {
+func NewPDFServiceWithInvoiceReader(templateRepo repository.ITemplateRepository, settingSvc ISetting, invoiceReader IInvoiceReader, encryption IEncryptionService, renderer render.IPDFRenderer, cfg *config.Config) IPDF {
 	return &PDFService{
 		templateRepo:  templateRepo,
-		settingRepo:   settingRepo,
+		settingSvc:    settingSvc,
 		invoiceReader: invoiceReader,
 		encryption:    encryption,
 		renderer:      renderer,
@@ -76,7 +76,7 @@ func (s *PDFService) GeneratePDF(ctx context.Context, rq template.RqGeneratePDF)
 		return nil, fmt.Errorf("failed to decrypt template: %w", err)
 	}
 
-	st, err := s.settingRepo.Get(ctx, uuid.Nil)
+	st, err := s.settingSvc.Get(ctx, uuid.Nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get settings: %w", err)
 	}
@@ -177,7 +177,7 @@ func (s *PDFService) DownloadPDF(ctx context.Context, clinicId uuid.UUID, invoic
 	}
 
 	// Apply styling overrides from settings on top of the base map
-	st, err := s.settingRepo.Get(ctx, invoiceId)
+	st, err := s.settingSvc.Get(ctx, invoiceId)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to fetch invoice settings: %w", err)
 	}
@@ -208,6 +208,10 @@ func (s *PDFService) DownloadPDF(ctx context.Context, clinicId uuid.UUID, invoic
 		BaseData:                     baseMap,
 	}
 	finalRenderMap := dataBuilder.Build()
+
+	if st != nil {
+		applySettingsToMap(finalRenderMap, st, s.cfg)
+	}
 
 	// 5. Fetch, decrypt, and render each template page individually with its specific context
 	var renderedPagesBuilder strings.Builder
@@ -265,19 +269,17 @@ func (s *PDFService) DownloadPDF(ctx context.Context, clinicId uuid.UUID, invoic
 	return pdfBytes, filename, nil
 }
 
-func (s *PDFService) applySettings(data *common.Invoice, st *common.Setting) {
+func (s *PDFService) applySettings(data *common.Invoice, st *common.RsSetting) {
 	if st == nil {
 		return
 	}
 
 	data.PrimaryColor = st.PrimaryColor
 	data.AccentColor = st.AccentColor
-	data.BodyFontFamily = st.BodyFontFamily
-	data.HeaderFontFamily = st.HeaderFontFamily
+	data.BodyFontFamily = strings.ReplaceAll(st.BodyFontFamily, "+", " ")
+	data.HeaderFontFamily = strings.ReplaceAll(st.HeaderFontFamily, "+", " ")
 
-	if st.TableStyle != nil {
-		data.TableStyleClass = *st.TableStyle
-	}
+	data.TableStyleClass = st.TableStyle
 
 	if st.TermText != nil {
 		data.Notes = *st.TermText
@@ -292,13 +294,13 @@ func (s *PDFService) applySettings(data *common.Invoice, st *common.Setting) {
 	if st.IsLogo && st.Logo != nil {
 		data.ShowLogo = true
 		data.ShowLogoImage = true
-		data.LogoURL = strings.TrimRight(s.cfg.R2StoragePrefix, "/") + "/" + st.Logo.ToRsDocument().FileKey
+		data.LogoURL = strings.TrimRight(s.cfg.R2StoragePrefix, "/") + "/" + st.Logo.FileKey
 	}
 }
 
 // applySettingsToMap injects template settings into the render map that the
 // Handlebars templates read from template_settings.* keys.
-func applySettingsToMap(m map[string]interface{}, st *common.Setting, cfg *config.Config) {
+func applySettingsToMap(m map[string]interface{}, st *common.RsSetting, cfg *config.Config) {
 	if st == nil {
 		return
 	}
@@ -315,35 +317,36 @@ func applySettingsToMap(m map[string]interface{}, st *common.Setting, cfg *confi
 	existing["is_watermark"] = st.IsWaterMark
 	existing["is_logo"] = st.IsLogo
 
-	// CSS-safe Google Font names (e.g. "Open Sans" -> "Open+Sans")
-	if st.BodyFontFamily != "" {
-		existing["body_font_family_css"] = strings.ReplaceAll(st.BodyFontFamily, " ", "+")
+	bodyFontClean := strings.ReplaceAll(st.BodyFontFamily, "+", " ")
+	headerFontClean := strings.ReplaceAll(st.HeaderFontFamily, "+", " ")
+
+	existing["body_font_family"] = bodyFontClean
+	existing["header_font_family"] = headerFontClean
+
+	if bodyFontClean != "" {
+		existing["body_font_family_css"] = strings.ReplaceAll(bodyFontClean, " ", "+")
 	}
-	if st.HeaderFontFamily != "" {
-		existing["header_font_family_css"] = strings.ReplaceAll(st.HeaderFontFamily, " ", "+")
+	if headerFontClean != "" {
+		existing["header_font_family_css"] = strings.ReplaceAll(headerFontClean, " ", "+")
 	}
 
-	if st.TableStyle != nil {
-		style := strings.ToLower(strings.TrimSpace(*st.TableStyle))
+	style := strings.ToLower(strings.TrimSpace(st.TableStyle))
 
-		existing["table_style"] = style
-		m["table_style_class"] = style
+	existing["table_style"] = style
+	m["table_style_class"] = style
 
-		// Backward-compatible template flags
-		m["table_style_bordered"] = false
-		m["table_style_striped"] = false
+	// Backward-compatible template flags
+	m["table_style_bordered"] = false
+	m["table_style_striped"] = false
 
-		switch style {
-		case "bordered":
-			m["table_style_bordered"] = true
-
-		case "striped":
-			m["table_style_striped"] = true
-
-		case "bordered-striped", "striped-bordered":
-			m["table_style_bordered"] = true
-			m["table_style_striped"] = true
-		}
+	switch style {
+	case "bordered":
+		m["table_style_bordered"] = true
+	case "striped":
+		m["table_style_striped"] = true
+	case "bordered-striped", "striped-bordered":
+		m["table_style_bordered"] = true
+		m["table_style_striped"] = true
 	}
 
 	if st.TermText != nil {
@@ -357,7 +360,7 @@ func applySettingsToMap(m map[string]interface{}, st *common.Setting, cfg *confi
 	}
 
 	if st.IsLogo && st.Logo != nil {
-		logoURL := strings.TrimRight(cfg.R2StoragePrefix, "/") + "/" + st.Logo.ToRsDocument().FileKey
+		logoURL := strings.TrimRight(cfg.R2StoragePrefix, "/") + "/" + st.Logo.FileKey
 		existing["logo_url"] = logoURL
 		m["logo_url"] = logoURL
 		m["show_logo"] = true
