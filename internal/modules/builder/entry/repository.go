@@ -583,9 +583,9 @@ func (r *Repository) ListCoaEntries(ctx context.Context, f common.Filter, actorI
         MAX(v.coa_id::text)::uuid                                                      AS coa_id,
         v.account_name                                                                 AS coa_name,
         COALESCE(MAX(coa.is_system::int)::bool, false)                                 AS is_system,
-        ABS(ROUND(SUM(v.net_amount)::numeric, 2))::float8                             AS total_net_amount,
-        ABS(ROUND(SUM(v.gst_amount)::numeric, 2))::float8                             AS total_gst_amount,
-        ABS(ROUND(SUM(v.gross_amount)::numeric, 2))::float8                           AS total_gross_amount,
+        COALESCE(ABS(ROUND(SUM(fev.net_amount)::numeric, 2))::float8, 0.0)             AS total_net_amount,
+        COALESCE(ABS(ROUND(SUM(fev.gst_amount)::numeric, 2))::float8, 0.0)             AS total_gst_amount,
+        COALESCE(ABS(ROUND(SUM(fev.gross_amount)::numeric, 2))::float8, 0.0)           AS total_gross_amount,
         COUNT(DISTINCT fev.id)                                                         AS entry_count
     FROM vw_double_entry_line_items v
     LEFT JOIN tbl_chart_of_accounts coa ON coa.id = v.coa_id
@@ -678,11 +678,6 @@ func (r *Repository) ListCoaEntries(ctx context.Context, f common.Filter, actorI
 					formStr := formUUID.String()
 					plFilter.FormID = &formStr
 				}
-			case "coa_id":
-				if coaUUID, ok := cond.Value.(uuid.UUID); ok {
-					coaStr := coaUUID.String()
-					plFilter.CoaID = &coaStr
-				}
 			case "tax_type_id":
 				if TaxTypeUUID, ok := cond.Value.(uuid.UUID); ok {
 					TaxTypeStr := TaxTypeUUID.String()
@@ -712,9 +707,9 @@ func (r *Repository) ListCoaEntries(ctx context.Context, f common.Filter, actorI
 			found := false
 			for _, entry := range result {
 				if strings.EqualFold(entry.CoaName, reCOA.Name) || entry.CoaID == reCOA.ID.String() {
-					entry.TotalNetAmount += math.Abs(summary.NetProfitNet)
-					entry.TotalGrossAmount += math.Abs(summary.NetProfitNet)
-					entry.EntryCount += 1
+					entry.TotalNetAmount = math.Abs(summary.NetProfitNet)
+					entry.TotalGrossAmount = math.Abs(summary.NetProfitNet)
+					entry.EntryCount = 1
 					found = true
 					break
 				}
@@ -809,7 +804,7 @@ func (r *Repository) CountCoaEntries(ctx context.Context, f common.Filter, actor
 	if len(targetPracIDs) > 0 {
 		plFilter := &pl.PLReportFilter{}
 
-		// Extract date filters from Where conditions
+		// Extract filters from Where conditions
 		for _, cond := range f.Where {
 			switch cond.Field {
 			case "start_date":
@@ -824,6 +819,16 @@ func (r *Repository) CountCoaEntries(ctx context.Context, f common.Filter, actor
 				if clinicUUID, ok := cond.Value.(uuid.UUID); ok {
 					clinicStr := clinicUUID.String()
 					plFilter.ClinicID = &clinicStr
+				}
+			case "form_id":
+				if formUUID, ok := cond.Value.(uuid.UUID); ok {
+					formStr := formUUID.String()
+					plFilter.FormID = &formStr
+				}
+			case "tax_type_id":
+				if TaxTypeUUID, ok := cond.Value.(uuid.UUID); ok {
+					TaxTypeStr := TaxTypeUUID.String()
+					plFilter.TaxTypeID = &TaxTypeStr
 				}
 			}
 		}
@@ -899,9 +904,9 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
                 ELSE 'UNKNOWN'
             END                                                                                                            AS transaction_type,
             COALESCE(v.account_type, '')                                                                                   AS account_type,
-            ROUND(COALESCE(v.net_amount, 0)::numeric, 2)::float8                                                           AS net_amount,
-            ROUND(COALESCE(v.gst_amount, 0)::numeric, 2)::float8                                                           AS gst_amount,
-            ROUND(COALESCE(v.gross_amount, 0)::numeric, 2)::float8                                                         AS gross_amount,
+            ROUND(COALESCE(fev.net_amount, 0)::numeric, 2)::float8                                                         AS net_amount,
+            ROUND(COALESCE(fev.gst_amount, 0)::numeric, 2)::float8                                                         AS gst_amount,
+            ROUND(COALESCE(fev.gross_amount, 0)::numeric, 2)::float8                                                       AS gross_amount,
             COALESCE(v.business_percentage::float8, 100.00::float8)                                                         AS business_percentage,
             COALESCE(v.description, '-')                                                                                   AS description,
             TO_CHAR(v.entry_date, 'YYYY-MM-DD HH24:MI:SS')                                                                 AS created_at
@@ -1048,7 +1053,7 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 
 		plFilter := &pl.PLReportFilter{}
 
-		// Extract date filters from Where conditions
+		// Extract filters from Where conditions
 		for _, cond := range f.Where {
 			switch cond.Field {
 			case "start_date":
@@ -1063,6 +1068,16 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 				if clinicUUID, ok := cond.Value.(uuid.UUID); ok {
 					clinicStr := clinicUUID.String()
 					plFilter.ClinicID = &clinicStr
+				}
+			case "form_id":
+				if formUUID, ok := cond.Value.(uuid.UUID); ok {
+					formStr := formUUID.String()
+					plFilter.FormID = &formStr
+				}
+			case "tax_type_id":
+				if TaxTypeUUID, ok := cond.Value.(uuid.UUID); ok {
+					TaxTypeStr := TaxTypeUUID.String()
+					plFilter.TaxTypeID = &TaxTypeStr
 				}
 			}
 		}
@@ -1167,7 +1182,7 @@ func (r *Repository) CountCoaEntryDetails(ctx context.Context, coaName string, f
 		if len(targetPracIDs) > 0 {
 			plFilter := &pl.PLReportFilter{}
 
-			// Extract date filters from Where conditions
+			// Extract filters from Where conditions
 			for _, cond := range f.Where {
 				switch cond.Field {
 				case "start_date":
@@ -1182,6 +1197,16 @@ func (r *Repository) CountCoaEntryDetails(ctx context.Context, coaName string, f
 					if clinicUUID, ok := cond.Value.(uuid.UUID); ok {
 						clinicStr := clinicUUID.String()
 						plFilter.ClinicID = &clinicStr
+					}
+				case "form_id":
+					if formUUID, ok := cond.Value.(uuid.UUID); ok {
+						formStr := formUUID.String()
+						plFilter.FormID = &formStr
+					}
+				case "tax_type_id":
+					if TaxTypeUUID, ok := cond.Value.(uuid.UUID); ok {
+						TaxTypeStr := TaxTypeUUID.String()
+						plFilter.TaxTypeID = &TaxTypeStr
 					}
 				}
 			}

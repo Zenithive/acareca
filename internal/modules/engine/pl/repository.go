@@ -196,62 +196,67 @@ func (r *repository) GetFYSummary(ctx context.Context, clinicID uuid.UUID, f *PL
 
 func (r *repository) GetReport(ctx context.Context, practitionerIDs []uuid.UUID, f *PLReportFilter) ([]*PLReportRow, error) {
 	query := `
-		SELECT
-			COALESCE(li.clinic_id::TEXT, '') AS clinic_id,
+		SELECT 
+			COALESCE(v.clinic_id::TEXT, '') AS clinic_id,
 			COALESCE(c.name, 'Manual Expense') AS clinic_name,
-			li.form_id::TEXT,
-			li.form_name,
-			li.form_field_id::TEXT,
-			li.field_label,
-			li.section_type::TEXT,
-			li.account_type,
-			li.pl_section,
-			li.coa_id::TEXT,
-			li.account_name,
-			li.tax_name,
-			SUM(li.net_amount)   AS net_amount,
-			SUM(li.gst_amount)   AS gst_amount,
-			SUM(li.gross_amount) AS gross_amount
-		FROM vw_pl_line_items li
-		LEFT JOIN tbl_clinic c ON c.id = li.clinic_id AND c.deleted_at IS NULL
-		WHERE li.practitioner_id IN (?)
+			v.form_id::TEXT,
+			v.form_name,
+			v.form_field_id::TEXT,
+			v.field_label,
+			v.section_type::TEXT,
+			v.account_type,
+			v.pl_section,
+			v.coa_id::TEXT,
+			v.account_name,
+			v.tax_name,
+			SUM(v.net_amount)   AS net_amount,
+			SUM(v.gst_amount)   AS gst_amount,
+			SUM(v.gross_amount) AS gross_amount
+		FROM vw_pl_line_items v
+		LEFT JOIN tbl_clinic c ON c.id = v.clinic_id AND c.deleted_at IS NULL
+		LEFT JOIN tbl_account_tax t ON t.name = v.tax_name
+		WHERE v.practitioner_id IN (?)
 	`
 	args := []interface{}{practitionerIDs}
 
 	if f.ClinicID != nil && *f.ClinicID != "" {
 		zeroUUID := "00000000-0000-0000-0000-000000000000"
-		query += " AND (li.clinic_id = ? OR li.clinic_id = ? OR li.clinic_id IS NULL)"
+		query += " AND (v.clinic_id = ? OR v.clinic_id = ? OR v.clinic_id IS NULL)"
 		args = append(args, *f.ClinicID, zeroUUID)
 	}
 
 	if f.DateFrom != nil && *f.DateFrom != "" {
-		query += " AND li.date::DATE >= ?::DATE"
+		query += " AND v.date::DATE >= ?::DATE"
 		args = append(args, *f.DateFrom)
 	}
+
 	if f.DateUntil != nil && *f.DateUntil != "" {
-		query += " AND li.date::DATE <= ?::DATE"
+		query += " AND v.date::DATE <= ?::DATE"
 		args = append(args, *f.DateUntil)
 	}
-	if f.CoaID != nil {
-		query += " AND li.coa_id = ?"
+
+	if f.CoaID != nil && *f.CoaID != "" {
+		query += " AND v.coa_id = ?"
 		args = append(args, *f.CoaID)
 	}
-	if f.TaxTypeID != nil {
-		query += " AND li.tax_name = ?"
-		args = append(args, *f.TaxTypeID)
-	}
-	if f.FormID != nil {
-		query += " AND li.form_id = ?"
+
+	if f.FormID != nil && *f.FormID != "" {
+		query += " AND v.form_id = ?"
 		args = append(args, *f.FormID)
+	}
+
+	if f.TaxTypeID != nil && *f.TaxTypeID != "" {
+		query += " AND t.id = ?"
+		args = append(args, *f.TaxTypeID)
 	}
 
 	query += `
 		GROUP BY
-			li.clinic_id, c.name, li.form_id, li.form_name,
-			li.form_field_id, li.field_label, li.section_type,
-			li.account_type, li.pl_section,
-			li.coa_id, li.account_name, li.tax_name
-		ORDER BY li.pl_section, li.account_name
+			v.clinic_id, c.name, v.form_id, v.form_name,
+			v.form_field_id, v.field_label, v.section_type,
+			v.account_type, v.pl_section,
+			v.coa_id, v.account_name, v.tax_name
+		ORDER BY v.pl_section, v.account_name
 	`
 
 	fullQuery, fullArgs, err := sqlx.In(query, args...)
@@ -263,7 +268,7 @@ func (r *repository) GetReport(ctx context.Context, practitionerIDs []uuid.UUID,
 
 	var rows []*PLReportRow
 	if err := r.db.SelectContext(ctx, &rows, finalQuery, fullArgs...); err != nil {
-		return nil, fmt.Errorf("get report: %w", err)
+		return nil, fmt.Errorf("get report rows: %w", err)
 	}
 	return rows, nil
 }
@@ -272,49 +277,50 @@ func (r *repository) GetPLSummary(ctx context.Context, practitionerIDs []uuid.UU
 	query := `
 		WITH filtered_items AS (
 			SELECT
-				practitioner_id,
-				account_type,
-				pl_section,
-				SUM(net_amount) AS total_net,
-				SUM(signed_net_amount) AS sg_net_amount
-			FROM vw_pl_line_items
-			WHERE practitioner_id IN (?)
+				v.practitioner_id,
+				v.account_type,
+				v.pl_section,
+				SUM(v.net_amount) AS total_net,
+				SUM(v.signed_net_amount) AS sg_net_amount
+			FROM vw_pl_line_items v
+			LEFT JOIN tbl_account_tax t ON t.name = v.tax_name
+			WHERE v.practitioner_id IN (?)
 	`
 	args := []interface{}{practitionerIDs}
 
 	if f.ClinicID != nil && *f.ClinicID != "" {
 		zeroUUID := "00000000-0000-0000-0000-000000000000"
-		query += " AND (clinic_id = ? OR clinic_id = ? OR clinic_id IS NULL)"
+		query += " AND (v.clinic_id = ? OR v.clinic_id = ? OR v.clinic_id IS NULL)"
 		args = append(args, *f.ClinicID, zeroUUID)
 	}
 
 	if f.DateFrom != nil && *f.DateFrom != "" {
-		query += " AND date::DATE >= ?::DATE"
+		query += " AND v.date::DATE >= ?::DATE"
 		args = append(args, *f.DateFrom)
 	}
 
 	if f.DateUntil != nil && *f.DateUntil != "" {
-		query += " AND date::DATE <= ?::DATE"
+		query += " AND v.date::DATE <= ?::DATE"
 		args = append(args, *f.DateUntil)
 	}
 
 	if f.CoaID != nil && *f.CoaID != "" {
-		query += " AND coa_id = ?"
+		query += " AND v.coa_id = ?"
 		args = append(args, *f.CoaID)
 	}
 
 	if f.FormID != nil && *f.FormID != "" {
-		query += " AND form_id = ?"
+		query += " AND v.form_id = ?"
 		args = append(args, *f.FormID)
 	}
 
 	if f.TaxTypeID != nil && *f.TaxTypeID != "" {
-		query += " AND tax_name = (SELECT name FROM tbl_account_tax WHERE id = ? LIMIT 1)"
+		query += " AND t.id = ?"
 		args = append(args, *f.TaxTypeID)
 	}
 
 	query += `
-			GROUP BY practitioner_id, account_type, pl_section
+			GROUP BY v.practitioner_id, v.account_type, v.pl_section
 		)
 		SELECT
 			COALESCE(SUM(total_net) FILTER (WHERE account_type = 'Revenue'), 0) - COALESCE(SUM(total_net) FILTER (WHERE pl_section = '2. Cost of Sales'), 0) AS gross_profit_net,
