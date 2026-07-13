@@ -298,6 +298,21 @@ func (r *repository) GetPLSummary(ctx context.Context, practitionerIDs []uuid.UU
 		args = append(args, *f.DateUntil)
 	}
 
+	if f.CoaID != nil && *f.CoaID != "" {
+		query += " AND coa_id = ?"
+		args = append(args, *f.CoaID)
+	}
+
+	if f.FormID != nil && *f.FormID != "" {
+		query += " AND form_id = ?"
+		args = append(args, *f.FormID)
+	}
+
+	if f.TaxTypeID != nil && *f.TaxTypeID != "" {
+		query += " AND tax_name = (SELECT name FROM tbl_account_tax WHERE id = ? LIMIT 1)"
+		args = append(args, *f.TaxTypeID)
+	}
+
 	query += `
 			GROUP BY practitioner_id, account_type, pl_section
 		)

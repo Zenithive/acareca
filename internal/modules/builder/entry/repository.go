@@ -657,7 +657,7 @@ func (r *Repository) ListCoaEntries(ctx context.Context, f common.Filter, actorI
 	if len(targetPracIDs) > 0 {
 		plFilter := &pl.PLReportFilter{}
 
-		// Extract date filters from Where conditions
+		// Extract filters from Where conditions
 		for _, cond := range f.Where {
 			switch cond.Field {
 			case "start_date":
@@ -672,6 +672,21 @@ func (r *Repository) ListCoaEntries(ctx context.Context, f common.Filter, actorI
 				if clinicUUID, ok := cond.Value.(uuid.UUID); ok {
 					clinicStr := clinicUUID.String()
 					plFilter.ClinicID = &clinicStr
+				}
+			case "form_id":
+				if formUUID, ok := cond.Value.(uuid.UUID); ok {
+					formStr := formUUID.String()
+					plFilter.FormID = &formStr
+				}
+			case "coa_id":
+				if coaUUID, ok := cond.Value.(uuid.UUID); ok {
+					coaStr := coaUUID.String()
+					plFilter.CoaID = &coaStr
+				}
+			case "tax_type_id":
+				if TaxTypeUUID, ok := cond.Value.(uuid.UUID); ok {
+					TaxTypeStr := TaxTypeUUID.String()
+					plFilter.TaxTypeID = &TaxTypeStr
 				}
 			}
 		}
@@ -793,7 +808,7 @@ func (r *Repository) CountCoaEntries(ctx context.Context, f common.Filter, actor
 
 	if len(targetPracIDs) > 0 {
 		plFilter := &pl.PLReportFilter{}
-		
+
 		// Extract date filters from Where conditions
 		for _, cond := range f.Where {
 			switch cond.Field {
@@ -1032,7 +1047,7 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 		}
 
 		plFilter := &pl.PLReportFilter{}
-		
+
 		// Extract date filters from Where conditions
 		for _, cond := range f.Where {
 			switch cond.Field {
@@ -1151,7 +1166,7 @@ func (r *Repository) CountCoaEntryDetails(ctx context.Context, coaName string, f
 
 		if len(targetPracIDs) > 0 {
 			plFilter := &pl.PLReportFilter{}
-			
+
 			// Extract date filters from Where conditions
 			for _, cond := range f.Where {
 				switch cond.Field {

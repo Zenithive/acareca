@@ -125,7 +125,7 @@ func TaxSummarySection() string {
             <td class="num" style="padding: 3px 6px;">{{format_currency subtotal}}</td>
           </tr>
           <tr>
-            <td style="padding: 3px 6px; text-align: left;">GST (10%%)</td>
+            <td style="padding: 3px 6px; text-align: left;">GST (10%)</td>
             <td class="num" style="padding: 3px 6px;">{{format_currency tax_total}}</td>
           </tr>
           <tr style="font-weight: bold; background-color: rgb(from var(--accent-color) r g b / 0.45) !important;">
