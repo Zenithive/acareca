@@ -135,36 +135,6 @@ func TaxSummarySection() string {
         </table>`
 }
 
-// ServiceFeeIntroRow returns the service fee introduction row HTML for Tax Invoice with inline rate styling
-func ServiceFeeIntroRow() string {
-	return `<tr>
-        <td colspan="3" style="border-bottom: none; padding-top: 5px; padding-bottom: 4px;">
-          <table class="layout-table" style="width: 100%%; border-collapse: collapse;">
-            <tr>
-              <td style="padding: 0; color: var(--text-dark); width: 65%%; vertical-align: middle; line-height: 1.4;">
-                {{service_fee_rate_intro.label}}
-                {{#unless billing_method.hide_fee_rate}}
-                <span style="display: inline-block; font-weight: bold; white-space: nowrap; margin-left: 6px;">
-                  {{#if billing_method.rate_label}}{{billing_method.rate_label}}{{else}}Fee rate{{/if}}&nbsp;
-                  <span class="txt-blue-val">{{service_fee_rate_intro.fee_rate_display}}</span>
-                </span>
-                {{/unless}}
-              </td>
-              <td style="width: 20%%; padding: 0;"></td>
-              <td style="width: 15%%; padding: 0;"></td>
-            </tr>
-          </table>
-          {{#if tax_invoice_description_items}}
-            <ol style="margin: 6px 0 0 18px; padding: 0; list-style-type: decimal; font-size: 11px; line-height: 1.5; color: var(--text-dark);">
-              {{#each tax_invoice_description_items}}
-              <li style="margin-bottom: 2px;">{{this}}</li>
-              {{/each}}
-            </ol>
-          {{/if}}
-        </td>
-      </tr>`
-}
-
 // TableConfig defines configuration for data table sections
 type TableConfig struct {
 	Title         string
@@ -246,6 +216,19 @@ func Header(title, labelName, addressBannerHTML string) string {
 		titleHTML = `RCTI<br><span style="font-size: 12px; letter-spacing: 0.2px; font-weight: normal; font-style: italic; text-transform: none; color: gray; display: block; margin-top: 2px;">Recipient Created Tax Invoice</span>`
 	}
 
+	// Determine if this is a calculation statement header to conditionally inject Client No.
+	isCalculation := title == "CALCULATION STATEMENT"
+
+	clientNoRow := ""
+	if isCalculation {
+		clientNoRow = `{{#if client_number}}
+          <tr>
+            <td class="hm-lbl" style="text-align: left; padding: 2px 0;"><strong>Client No.</strong></td>
+            <td class="hm-val" style="text-align: right; padding: 2px 0;">{{client_number}}</td>
+          </tr>
+          {{/if}}`
+	}
+
 	return `<table class="layout-table" style="margin-bottom: 2px; width: 100%; border-collapse: collapse;">
   <tr>
     <td style="width: 55%; vertical-align: top; padding: 0;">
@@ -279,6 +262,7 @@ func Header(title, labelName, addressBannerHTML string) string {
             <td class="hm-lbl" style="text-align: left; padding: 2px 0;"><strong>` + labelName + `</strong></td>
             <td class="hm-val" style="text-align: right; padding: 2px 0;">{{invoice_number}}</td>
           </tr>
+          ` + clientNoRow + `
           <tr>
             <td class="hm-lbl" style="text-align: left; padding: 2px 0;"><strong>Issue Date</strong></td>
             <td class="hm-val" style="text-align: right; padding: 2px 0;">{{issue_date_display}}</td>

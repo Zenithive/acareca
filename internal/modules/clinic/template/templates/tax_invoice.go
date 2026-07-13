@@ -15,7 +15,20 @@ func TaxInvoiceHTML() string {
       </tr>
     </thead>
     <tbody>
-      %s
+      <tr>
+        <td style="width: 65%%; vertical-align: top; line-height: 1.5; color: #000000; padding-bottom: 8px;">
+          Service and facility fee for the period {{billing_period}},<br>
+          calculated at the agreed rate on net patient fees, comprising: <strong> Fee Rate </strong> {{service_fee_rate_intro.fee_rate_display}}
+          <ol style="margin: 4px 0 0 0; list-style-type: decimal; padding-left: 20px;">
+            <li>Rent of dental surgery/room</li>
+            <li>Patient booking &amp; reception</li>
+            <li>Equipment &amp; instrument hire</li>
+            <li>General administration &amp; support staff</li>
+          </ol>
+        </td>
+        <td class="num" style="width: 20%%; vertical-align: top; text-align: right;"></td>
+        <td class="center" style="width: 15%%; vertical-align: top;"></td>
+      </tr>
 
       {{#each invoice_fee_items}}
       <tr{{#if row_class}} class="{{row_class}}"{{/if}}>
@@ -109,5 +122,5 @@ func TaxInvoiceHTML() string {
     </p>
   </div>
   {{/if}}
-</div>{{/unless}}{{/unless}}`, Header("TAX INVOICE", "Invoice No.", TaxInvoiceBillToBanner()), ServiceFeeIntroRow(), TaxSummarySection())
+</div>{{/unless}}{{/unless}}`, Header("TAX INVOICE", "Invoice No.", TaxInvoiceBillToBanner()), TaxSummarySection())
 }

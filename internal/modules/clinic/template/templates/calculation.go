@@ -25,15 +25,6 @@ func ServiceFeeIntroRowCalculation() string {
 
 // CalculationHTML returns the HTML body for the default Calculation Statement.
 func CalculationHTML() string {
-	patientFeesTable := DataTable(TableConfig{
-		ItemsVariable: "patient_fee_items",
-		Columns: []TableColumn{
-			{Header: "1. PATIENT FEES", Width: "65%", Align: "left", FieldType: "text"},
-			{Header: "Amount", Width: "20%", Align: "right", FieldType: "amount"},
-			{Header: "BAS Code", Width: "15%", Align: "center", FieldType: "bas_code"},
-		},
-	})
-
 	treatmentCostsTable := DataTable(TableConfig{
 		ItemsVariable: "treatment_cost_items",
 		Columns: []TableColumn{
@@ -55,7 +46,38 @@ func CalculationHTML() string {
 
 	return fmt.Sprintf(`<div class="invoice-page"><div style="display: block; width: 100%%;">%s</div>
 
-  %s
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="width: 65%%; text-align: left;">1.  PATIENT FEES</th>
+        <th style="width: 20%%; text-align: right;">Amount</th>
+        <th style="width: 15%%; text-align: center;">BAS Code</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{#each patient_fee_items}}
+      {{#if is_total}}
+        {{#if patient_fee_adjustment}}
+        <tr>
+          <td colspan="3" style="padding-left: 12px; font-weight: normal; background-color: rgb(from var(--accent-color) r g b / 0.25) !important;; padding-top: 5px; padding-bottom: 3px;">Patient Adjustment (fee mis-allocation)</td>
+        </tr>
+        {{#each patient_adjustment_items}}
+        <tr>
+          <td style="padding-left: 24px; font-size: 11px;">{{label}}</td>
+          <td class="num" style="font-size: 11px;">{{format_table_amount this}}</td>
+          <td class="center" style="font-size: 11px;">{{bas_code}}</td>
+        </tr>
+        {{/each}}
+        {{/if}}
+      {{/if}}
+      <tr{{#if row_class}} class="{{row_class}}"{{/if}}>
+        <td style="width: 65%%; {{#unless is_total}}padding-left: 12px;{{/unless}}">{{label}}</td>
+        <td class="num{{#if value_class}} {{value_class}}{{/if}}" style="width: 20%%;{{#if is_bold}} font-weight: bold;{{/if}}">{{format_table_amount this}}</td>
+        <td class="center" style="width: 15%%;">{{bas_code}}</td>
+      </tr>
+      {{/each}}
+    </tbody>
+  </table>
 
   %s
 
@@ -94,5 +116,5 @@ func CalculationHTML() string {
       {{/if}}
     {{/if}}
   </div>
-</div>`, CalculationStatementHeader(DefaultPreparedForBanner()), patientFeesTable, treatmentCostsTable, netPatientFeesTable, ServiceFeeIntroRowCalculation())
+</div>`, CalculationStatementHeader(DefaultPreparedForBanner()), treatmentCostsTable, netPatientFeesTable, ServiceFeeIntroRowCalculation())
 }
