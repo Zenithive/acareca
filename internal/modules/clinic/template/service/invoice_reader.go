@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"regexp"
 	"strings"
 	"time"
 
@@ -540,9 +541,14 @@ func (r *dbInvoiceReader) GetInvoiceRenderData(ctx context.Context, invoiceId uu
 	taxTotal = grandTotal / 11.0
 	subtotal = grandTotal - taxTotal
 
+	// Generate Client Number from Invoice Number
+	re := regexp.MustCompile(`\d+`)
+	clientNumber := re.FindString(invoiceNumber)
+
 	// ── 7. Build Explicit Scopes to align with Handlebars structures ──────
 	data := map[string]interface{}{
 		"invoice_number":          invoiceNumber,
+		"client_number":           clientNumber,
 		"issue_date_display":      issueDateDisplay,
 		"due_date_display":        dueDateDisplay,
 		"billing_period":          billingPeriod,

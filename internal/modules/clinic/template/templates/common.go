@@ -221,12 +221,12 @@ func Header(title, labelName, addressBannerHTML string) string {
 
 	clientNoRow := ""
 	if isCalculation {
-		clientNoRow = `{{#if client_number}}
+		clientNoRow = `{{#if is_method_b}}{{#if client_number}}
           <tr>
             <td class="hm-lbl" style="text-align: left; padding: 2px 0;"><strong>Client No.</strong></td>
             <td class="hm-val" style="text-align: right; padding: 2px 0;">{{client_number}}</td>
           </tr>
-          {{/if}}`
+          {{/if}}{{/if}}`
 	}
 
 	return `<table class="layout-table" style="margin-bottom: 2px; width: 100%; border-collapse: collapse;">
