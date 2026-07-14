@@ -9,7 +9,7 @@ func ServiceFeeIntroRowCalculation() string {
           <table class="layout-table" style="width: 100%%; border-collapse: collapse;">
             <tr>
               <td style="padding: 0; color: black; width: 65%%; vertical-align: middle; line-height: 1.4;">
-                {{service_fee_rate_intro.label}}
+                {{{service_fee_rate_intro.label}}}
                 <span style="display: inline-block; font-weight: bold; white-space: nowrap; margin-left: 6px;">
                   {{#if is_method_c}}Commission rate{{else}}{{#if billing_method.rate_label}}{{billing_method.rate_label}}{{else}}Fee rate{{/if}}{{/if}}&nbsp;
                   <span class="txt-blue-val">{{service_fee_rate_intro.fee_rate_display}}</span>
@@ -66,7 +66,7 @@ func CalculationHTML() string {
         {{#each ../patient_adjustment_items}}
         <tr>
           <td style="padding-left: 24px; font-size: 11px;">{{label}}</td>
-          <td class="num" style="font-size: 11px;">{{format_table_amount this}}</td>
+          <td class="num{{#if value_class}} {{value_class}}{{/if}}" style="font-size: 11px;">{{format_table_amount this}}</td>
           <td class="center" style="font-size: 11px;">{{bas_code}}</td>
         </tr>
         {{/each}}

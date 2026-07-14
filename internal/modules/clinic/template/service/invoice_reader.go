@@ -119,17 +119,20 @@ func appendUniqueItem(dst *[]map[string]interface{}, seen map[string]map[string]
 	*dst = append(*dst, entry)
 }
 
-func reformatToDDMMYYYY(dateStr string) string {
+func reformatDate(dateStr string) string {
 	if dateStr == "" {
 		return ""
 	}
-	if parsed, err := time.Parse("2006-01-02", dateStr); err == nil {
-		return parsed.Format("02-01-2006")
+	var parsed time.Time
+	var err error
+
+	if parsed, err = time.Parse("2006-01-02", dateStr); err != nil {
+		if parsed, err = time.Parse("02 January 2006", dateStr); err != nil {
+			return dateStr
+		}
 	}
-	if parsed, err := time.Parse("02 January 2006", dateStr); err == nil {
-		return parsed.Format("02-01-2006")
-	}
-	return dateStr
+
+	return parsed.Format("02 January 2006")
 }
 
 func (r *dbInvoiceReader) GetInvoiceRenderData(ctx context.Context, invoiceId uuid.UUID) (map[string]interface{}, error) {
@@ -242,7 +245,7 @@ func (r *dbInvoiceReader) GetInvoiceRenderData(ctx context.Context, invoiceId uu
 		}
 
 		if paymentDate == "" && s.PaymentDate.String != "" {
-			paymentDate = reformatToDDMMYYYY(s.PaymentDate.String)
+			paymentDate = reformatDate(s.PaymentDate.String)
 		}
 
 		// Extract Document Numbers from the parent containers
@@ -335,14 +338,14 @@ func (r *dbInvoiceReader) GetInvoiceRenderData(ctx context.Context, invoiceId uu
 	_ = itemRowsCursor.Err()
 
 	// ── 4. Derive display values using strict DD-MM-YYYY layout ──────────────
-	issueDateDisplay := reformatToDDMMYYYY(core.IssueDate.String)
-	dueDateDisplay := reformatToDDMMYYYY(core.DueDate.String)
+	issueDateDisplay := reformatDate(core.IssueDate.String)
+	dueDateDisplay := reformatDate(core.DueDate.String)
 
 	billingPeriod := ""
 	if core.BillingPeriodFrom.String != "" || core.BillingPeriodTo.String != "" {
-		fromFormatted := reformatToDDMMYYYY(core.BillingPeriodFrom.String)
-		toFormatted := reformatToDDMMYYYY(core.BillingPeriodTo.String)
-		billingPeriod = fromFormatted + " to " + toFormatted
+		fromFormatted := reformatDate(core.BillingPeriodFrom.String)
+		toFormatted := reformatDate(core.BillingPeriodTo.String)
+		billingPeriod = fromFormatted + " - " + toFormatted
 	}
 
 	contactName := strings.TrimSpace(core.ContactFname.String + " " + core.ContactLname.String)
@@ -380,6 +383,7 @@ func (r *dbInvoiceReader) GetInvoiceRenderData(ctx context.Context, invoiceId uu
 
 	// ── 6. Categorise items & Apply CSS Stylings ─────────────────────────────
 	patientFeeItems := make([]map[string]interface{}, 0)
+	patientFeeAdjustmentItems := make([]map[string]interface{}, 0)
 	treatmentCostItems := make([]map[string]interface{}, 0)
 	netPatientFeeItems := make([]map[string]interface{}, 0)
 	serviceFeeItems := make([]map[string]interface{}, 0)
@@ -390,7 +394,6 @@ func (r *dbInvoiceReader) GetInvoiceRenderData(ctx context.Context, invoiceId uu
 
 	bucketSeen := map[string]map[string]struct{}{}
 	var grandTotal, subtotal, taxTotal float64
-	sfaItemIndex := 0
 
 	for _, it := range allItems {
 		if it.InvoiceSectionID.String == "" || !validSectionIDs[it.InvoiceSectionID.String] {
@@ -407,20 +410,20 @@ func (r *dbInvoiceReader) GetInvoiceRenderData(ctx context.Context, invoiceId uu
 		amount := it.Amount.Float64
 		entryTypeUpper := strings.ToUpper(strings.TrimSpace(it.EntryType.String))
 		isDebit := entryTypeUpper == "DEBIT"
+		isCredit := entryTypeUpper == "CREDIT"
 		isNegative := isDebit || amount < 0
 
 		rowClass := ""
 		valueClass := ""
 		hasFormula := it.Expression.String != ""
-		isBold := it.IsFinal.Bool || hasFormula
-
-		sid := it.InvoiceSectionID.String
-		isLastItemInSection := it.SortOrder.Int64 == maxSortOrderPerSection[sid] && itemCountPerSection[sid] > 1
+		isBold := it.IsFinal.Bool
 
 		if it.IsFinal.Bool {
-			rowClass = "bg-sky-row"
-		} else if isLastItemInSection {
-			rowClass = "row-total"
+			if !it.BASCode.Valid || strings.TrimSpace(it.BASCode.String) == "" {
+				rowClass = "bg-sky-row"
+			} else {
+				rowClass = "row-total"
+			}
 		}
 
 		if !hasFormula && !it.IsFinal.Bool {
@@ -428,7 +431,6 @@ func (r *dbInvoiceReader) GetInvoiceRenderData(ctx context.Context, invoiceId uu
 		}
 
 		lowerName := strings.ToLower(strings.TrimSpace(it.Name.String))
-
 		displayLabel := it.Name.String
 		if hasFormula {
 			if cleanFormula := parseExpressionString(it.Expression.String); cleanFormula != "" {
@@ -445,10 +447,6 @@ func (r *dbInvoiceReader) GetInvoiceRenderData(ctx context.Context, invoiceId uu
 			}
 		}
 
-		if isDebit {
-			displayLabel = "Less: " + displayLabel
-		}
-
 		if it.FieldKey.String != "" {
 			displayLabel = fmt.Sprintf("(%s) %s", it.FieldKey.String, displayLabel)
 		}
@@ -459,6 +457,7 @@ func (r *dbInvoiceReader) GetInvoiceRenderData(ctx context.Context, invoiceId uu
 			"bas_code":      strings.TrimSpace(it.BASCode.String),
 			"entry_type":    it.EntryType.String,
 			"is_final":      it.IsFinal.Bool,
+			"is_total":      it.IsFinal.Bool, // To trigger adjustment section
 			"is_bold":       isBold,
 			"is_negative":   isNegative,
 			"is_percentage": isPercentage,
@@ -474,22 +473,49 @@ func (r *dbInvoiceReader) GetInvoiceRenderData(ctx context.Context, invoiceId uu
 		switch secTypeUpper {
 		case "PATIENT_FEE":
 			appendUniqueItem(&patientFeeItems, bucketSeen, "patient_fee_items", entry, it.SortOrder.Int64, it.FieldKey.String, displayLabel)
+		case "PATIENT_FEE_ADJUSTMENT":
+			appendUniqueItem(&patientFeeAdjustmentItems, bucketSeen, "patient_adjustment_items", entry, it.SortOrder.Int64, it.FieldKey.String, displayLabel)
 		case "TREATMENT_COST":
 			appendUniqueItem(&treatmentCostItems, bucketSeen, "treatment_cost_items", entry, it.SortOrder.Int64, it.FieldKey.String, displayLabel)
 		case "NET_PATIENT_FEES":
 			appendUniqueItem(&netPatientFeeItems, bucketSeen, "net_patient_fee_items", entry, it.SortOrder.Int64, it.FieldKey.String, displayLabel)
 		case "SERVICE_FACILITY", "SERVICE_FACILITY_FEE", "SERVICE_AND_FACILITY_FEE":
+			prefix := ""
+			isUserEnteredValue := it.Expression.String == "" && !it.IsFinal.Bool
+			if isUserEnteredValue {
+				if isDebit {
+					if !strings.HasPrefix(strings.ToLower(it.Name.String), "less:") {
+						prefix = "Less: "
+					}
+				} else if isCredit {
+					if !strings.HasPrefix(strings.ToLower(it.Name.String), "add:") {
+						prefix = "Add: "
+					}
+				}
+			}
+			// Rebuild the display label ensuring the prefix sits AFTER the field key
+			displayLabel = it.Name.String
+			if hasFormula {
+				if cleanFormula := parseExpressionString(it.Expression.String); cleanFormula != "" {
+					displayLabel = fmt.Sprintf("%s [ %s ]", it.Name.String, cleanFormula)
+				}
+			}
+
+			// Apply the field key parenthetical first, then inject the prefix before the name content
+			if it.FieldKey.String != "" {
+				displayLabel = fmt.Sprintf("(%s) %s%s", it.FieldKey.String, prefix, displayLabel)
+			} else {
+				displayLabel = prefix + displayLabel
+			}
+
+			// Update the entry label payload
+			entry["label"] = displayLabel
+
 			appendUniqueItem(&serviceFeeItems, bucketSeen, "service_fee_items", entry, it.SortOrder.Int64, it.FieldKey.String, displayLabel)
 			appendUniqueItem(&invoiceFeeItems, bucketSeen, "invoice_fee_items", entry, it.SortOrder.Int64, it.FieldKey.String, displayLabel)
 
 			if it.IsFinal.Bool {
 				grandTotal = amount
-			} else {
-				switch sfaItemIndex {
-				case 0:
-					subtotal = amount
-				}
-				sfaItemIndex++
 			}
 		case "COMMISSION":
 			if core.InvoiceMethod.String == "INDEPENDENT_CONTRACTOR" {
@@ -499,12 +525,6 @@ func (r *dbInvoiceReader) GetInvoiceRenderData(ctx context.Context, invoiceId uu
 
 			if it.IsFinal.Bool {
 				grandTotal = amount
-			} else {
-				switch sfaItemIndex {
-				case 0:
-					subtotal = amount
-				}
-				sfaItemIndex++
 			}
 		case "NET_SETTLEMENT", "REMITTANCE_INVOICE", "REMITTANCE_ADVICE":
 			appendUniqueItem(&remittanceItems, bucketSeen, "remittance_items", entry, it.SortOrder.Int64, it.FieldKey.String, displayLabel)
@@ -517,7 +537,8 @@ func (r *dbInvoiceReader) GetInvoiceRenderData(ctx context.Context, invoiceId uu
 		}
 	}
 
-	taxTotal = grandTotal * 0.1
+	taxTotal = grandTotal / 11.0
+	subtotal = grandTotal - taxTotal
 
 	// ── 7. Build Explicit Scopes to align with Handlebars structures ──────
 	data := map[string]interface{}{
@@ -555,19 +576,21 @@ func (r *dbInvoiceReader) GetInvoiceRenderData(ctx context.Context, invoiceId uu
 		"subtotal":    subtotal,
 		"tax_total":   taxTotal,
 
-		"patient_fee_items":     patientFeeItems,
-		"treatment_cost_items":  treatmentCostItems,
-		"net_patient_fee_items": netPatientFeeItems,
-		"service_fee_items":     serviceFeeItems,
-		"invoice_fee_items":     invoiceFeeItems,
-		"rcti_fee_items":        rctiFeeItems,
-		"remittance_items":      remittanceItems,
-		"settlement_items":      settlementItems,
+		"patient_fee_items":        patientFeeItems,
+		"patient_fee_adjustment":   patientFeeAdjustmentItems,
+		"patient_adjustment_items": patientFeeAdjustmentItems,
+		"treatment_cost_items":     treatmentCostItems,
+		"net_patient_fee_items":    netPatientFeeItems,
+		"service_fee_items":        serviceFeeItems,
+		"invoice_fee_items":        invoiceFeeItems,
+		"rcti_fee_items":           rctiFeeItems,
+		"remittance_items":         remittanceItems,
+		"settlement_items":         settlementItems,
 
 		"tax_invoice_description_items": serviceDescriptionItems,
 
 		"service_fee_rate_intro": map[string]interface{}{
-			"label":            fmt.Sprintf("Service and facility fee for the period %s, calculated at the agreed rate on net patient fees, comprising:", billingPeriod),
+			"label":            fmt.Sprintf("Service and facility fee for the period %s, <br> calculated at the agreed rate on net patient fees, comprising:", billingPeriod),
 			"fee_rate_display": customFeeRateDisplay,
 			"amount_display":   "",
 		},

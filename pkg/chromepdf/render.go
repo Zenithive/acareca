@@ -131,6 +131,27 @@ func toFloat64(v any) float64 {
 	}
 }
 
+// insertCommas splits the string at decimal and puts thousands commas into the whole number part
+func insertCommas(s string) string {
+	parts := strings.Split(s, ".")
+	intPart := parts[0]
+
+	var res []string
+	l := len(intPart)
+	for i, c := range intPart {
+		res = append(res, string(c))
+		if (l-i-1)%3 == 0 && i != l-1 {
+			res = append(res, ",")
+		}
+	}
+
+	out := strings.Join(res, "")
+	if len(parts) > 1 {
+		out += "." + parts[1]
+	}
+	return out
+}
+
 func init() {
 	// coalesce is now handled by the pre-processor above; this single-arg
 	// registration is kept so any stray {{coalesce x}} in old stored templates
@@ -153,7 +174,8 @@ func init() {
 	})
 
 	raymond.RegisterHelper("format_currency", func(amount float64) raymond.SafeString {
-		return raymond.SafeString(fmt.Sprintf("$%.2f", math.Abs(amount)))
+		formattedRaw := fmt.Sprintf("%.2f", math.Abs(amount))
+		return raymond.SafeString("$" + insertCommas(formattedRaw))
 	})
 
 	raymond.RegisterHelper("format_table_amount", func(row any) raymond.SafeString {
@@ -166,7 +188,8 @@ func init() {
 			}
 		}
 		amount := toFloat64(m["amount"])
-		formatted := fmt.Sprintf("$%.2f", math.Abs(amount))
+		formattedRaw := fmt.Sprintf("%.2f", math.Abs(amount))
+		formatted := "$" + insertCommas(formattedRaw)
 		if neg, _ := m["is_negative"].(bool); neg {
 			return raymond.SafeString(fmt.Sprintf("(%s)", formatted))
 		}

@@ -61,11 +61,11 @@ func TaxInvoiceHTML() string {
           </tr>
           <tr>
             <td style="font-weight: bold;">BSB / Acc No.</td>
-            <td>{{#if clinic_payment_details}}{{clinic_payment_details}}{{else}}083-000 / 98765432{{/if}}</td>
+            <td>{{coalesce custom_payment_bsb "063-000"}} / {{coalesce custom_payment_account "12345678"}}</td>
           </tr>
           <tr>
             <td style="font-weight: bold;">Due Date</td>
-            <td>14 days from issue</td>
+            <td>{{due_date_display}}</td>
           </tr>
           <tr>
             <td style="font-weight: bold;">Reference</td>
@@ -85,11 +85,11 @@ func TaxInvoiceHTML() string {
           </tr>
           <tr>
             <td style="font-weight: bold;">BSB / Acc No.</td>
-            <td>{{coalesce clinic_payment_details "083-000 / 98765432"}}</td>
+            <td>{{coalesce custom_payment_bsb "063-000"}} / {{coalesce custom_payment_account "12345678"}}</td>
           </tr>
           <tr>
             <td style="font-weight: bold;">Due Date</td>
-            <td>14 days from issue</td>
+            <td>{{due_date_display}}</td>
           </tr>
           <tr>
             <td style="font-weight: bold;">Reference</td>
