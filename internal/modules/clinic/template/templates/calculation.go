@@ -57,11 +57,13 @@ func CalculationHTML() string {
     <tbody>
       {{#each patient_fee_items}}
       {{#if is_total}}
-        {{#if patient_fee_adjustment}}
+        {{#if ../patient_fee_adjustment}}
         <tr>
-          <td colspan="3" style="padding-left: 12px; font-weight: normal; background-color: rgb(from var(--accent-color) r g b / 0.25) !important;; padding-top: 5px; padding-bottom: 3px;">Patient Adjustment (fee mis-allocation)</td>
+          <td colspan="3">
+           <p style="font-weight: bold; background-color: rgb(from var(--accent-color) r g b / 0.25) !important; color: var(--primary-color); padding-left: 6px !important; padding-top: 1px !important; padding-bottom: 1px !important; border-left: 10px solid #ffffff !important; background-clip: padding-box !important;">Patient Adjustment (fee mis-allocation)</p>
+          </td>
         </tr>
-        {{#each patient_adjustment_items}}
+        {{#each ../patient_adjustment_items}}
         <tr>
           <td style="padding-left: 24px; font-size: 11px;">{{label}}</td>
           <td class="num" style="font-size: 11px;">{{format_table_amount this}}</td>
@@ -71,7 +73,7 @@ func CalculationHTML() string {
         {{/if}}
       {{/if}}
       <tr{{#if row_class}} class="{{row_class}}"{{/if}}>
-        <td style="width: 65%%; {{#unless is_total}}padding-left: 12px;{{/unless}}">{{label}}</td>
+        <td style="width: 65%%;padding-left: 12px;">{{label}}</td>
         <td class="num{{#if value_class}} {{value_class}}{{/if}}" style="width: 20%%;{{#if is_bold}} font-weight: bold;{{/if}}">{{format_table_amount this}}</td>
         <td class="center" style="width: 15%%;">{{bas_code}}</td>
       </tr>

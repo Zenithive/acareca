@@ -18,11 +18,11 @@ func TaxInvoiceHTML() string {
       <tr>
         <td style="width: 65%%; vertical-align: top; line-height: 1.5; color: #000000; padding-bottom: 8px;">
           Service and facility fee for the period {{billing_period}},<br>
-          calculated at the agreed rate on net patient fees, comprising: <strong> Fee Rate </strong> {{service_fee_rate_intro.fee_rate_display}}
+          calculated at the agreed rate on net patient fees, comprising: <strong> Fee Rate </strong> <span class="txt-blue-val">{{service_fee_rate_intro.fee_rate_display}}</span>
           <ol style="margin: 4px 0 0 0; list-style-type: decimal; padding-left: 20px;">
-            <li>Rent of dental surgery/room</li>
-            <li>Patient booking &amp; reception</li>
-            <li>Equipment &amp; instrument hire</li>
+            <li style="padding-bottom: 8px;">Rent of dental surgery/room</li>
+            <li style="padding-bottom: 8px;">Patient booking &amp; reception</li>
+            <li style="padding-bottom: 8px;">Equipment &amp; instrument hire</li>
             <li>General administration &amp; support staff</li>
           </ol>
         </td>
