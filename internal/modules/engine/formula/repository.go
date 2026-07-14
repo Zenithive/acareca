@@ -14,7 +14,6 @@ type IRepository interface {
 	DeleteByFormVersionIDTx(ctx context.Context, tx *sqlx.Tx, formVersionID uuid.UUID) error
 	ListByFormVersionID(ctx context.Context, formVersionID uuid.UUID) ([]*Formula, error)
 	ListNodesWithKeyByFormulaID(ctx context.Context, formulaID uuid.UUID) ([]*FormulaNodeWithKey, error)
-	GetFieldKeyByFieldID(ctx context.Context, fieldID uuid.UUID) (string, error)
 }
 
 type repository struct {
@@ -90,15 +89,4 @@ func (r *repository) ListNodesWithKeyByFormulaID(ctx context.Context, formulaID 
 		return nil, fmt.Errorf("list formula nodes with key: %w", err)
 	}
 	return rows, nil
-}
-
-func (r *repository) GetFieldKeyByFieldID(ctx context.Context, fieldID uuid.UUID) (string, error) {
-	var key string
-	err := r.db.QueryRowContext(ctx,
-		`SELECT field_key FROM tbl_form_field WHERE id = $1 AND deleted_at IS NULL`, fieldID,
-	).Scan(&key)
-	if err != nil {
-		return "", fmt.Errorf("get field key: %w", err)
-	}
-	return key, nil
 }

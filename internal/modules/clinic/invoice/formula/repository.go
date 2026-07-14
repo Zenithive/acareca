@@ -146,16 +146,15 @@ func (r *Repository) GetByInvoiceID(ctx context.Context, invoiceID uuid.UUID) ([
 
 // Delete soft-deletes the formula and its nodes (cascade handled by FK).
 func (r *Repository) Delete(ctx context.Context, tx *sqlx.Tx, id uuid.UUID) error {
-	result, err := tx.ExecContext(ctx, `
+	_, err := tx.ExecContext(ctx, `
 		DELETE FROM tbl_invoice_formula_node
 		WHERE invoice_formula_id = $1
 	`, id)
 	if err != nil {
 		return err
 	}
-	_ = result
 
-	result, err = tx.ExecContext(ctx, `
+	result, err := tx.ExecContext(ctx, `
 		DELETE FROM tbl_invoice_formula
 		WHERE id = $1
 	`, id)

@@ -9,7 +9,6 @@ import (
 	"log"
 	"regexp"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
@@ -118,22 +117,6 @@ func appendUniqueItem(dst *[]map[string]interface{}, seen map[string]map[string]
 	}
 	seen[bucket][key] = struct{}{}
 	*dst = append(*dst, entry)
-}
-
-func reformatDate(dateStr string) string {
-	if dateStr == "" {
-		return ""
-	}
-	var parsed time.Time
-	var err error
-
-	if parsed, err = time.Parse("2006-01-02", dateStr); err != nil {
-		if parsed, err = time.Parse("02 January 2006", dateStr); err != nil {
-			return dateStr
-		}
-	}
-
-	return parsed.Format("02 January 2006")
 }
 
 func (r *dbInvoiceReader) GetInvoiceRenderData(ctx context.Context, invoiceId uuid.UUID) (map[string]interface{}, error) {
@@ -246,7 +229,7 @@ func (r *dbInvoiceReader) GetInvoiceRenderData(ctx context.Context, invoiceId uu
 		}
 
 		if paymentDate == "" && s.PaymentDate.String != "" {
-			paymentDate = reformatDate(s.PaymentDate.String)
+			paymentDate = util.FormatDateString(s.PaymentDate.String)
 		}
 
 		// Extract Document Numbers from the parent containers
@@ -339,13 +322,13 @@ func (r *dbInvoiceReader) GetInvoiceRenderData(ctx context.Context, invoiceId uu
 	_ = itemRowsCursor.Err()
 
 	// ── 4. Derive display values using strict DD-MM-YYYY layout ──────────────
-	issueDateDisplay := reformatDate(core.IssueDate.String)
-	dueDateDisplay := reformatDate(core.DueDate.String)
+	issueDateDisplay := util.FormatDateString(core.IssueDate.String)
+	dueDateDisplay := util.FormatDateString(core.DueDate.String)
 
 	billingPeriod := ""
 	if core.BillingPeriodFrom.String != "" || core.BillingPeriodTo.String != "" {
-		fromFormatted := reformatDate(core.BillingPeriodFrom.String)
-		toFormatted := reformatDate(core.BillingPeriodTo.String)
+		fromFormatted := util.FormatDateString(core.BillingPeriodFrom.String)
+		toFormatted := util.FormatDateString(core.BillingPeriodTo.String)
 		billingPeriod = fromFormatted + " - " + toFormatted
 	}
 
