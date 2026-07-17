@@ -15,7 +15,20 @@ func TaxInvoiceHTML() string {
       </tr>
     </thead>
     <tbody>
-      %s
+      <tr>
+        <td style="width: 65%%; vertical-align: top; line-height: 1.5; color: #000000; padding-bottom: 8px;">
+          Service and facility fee for the period {{billing_period}},<br>
+          calculated at the agreed rate on net patient fees, comprising: <strong> Fee Rate </strong> <span class="txt-blue-val">{{service_fee_rate_intro.fee_rate_display}}</span>
+          <ol style="margin: 4px 0 0 0; list-style-type: decimal; padding-left: 20px;">
+            <li style="padding-bottom: 8px;">Rent of dental surgery/room</li>
+            <li style="padding-bottom: 8px;">Patient booking &amp; reception</li>
+            <li style="padding-bottom: 8px;">Equipment &amp; instrument hire</li>
+            <li>General administration &amp; support staff</li>
+          </ol>
+        </td>
+        <td class="num" style="width: 20%%; vertical-align: top; text-align: right;"></td>
+        <td class="center" style="width: 15%%; vertical-align: top;"></td>
+      </tr>
 
       {{#each invoice_fee_items}}
       <tr{{#if row_class}} class="{{row_class}}"{{/if}}>
@@ -48,11 +61,11 @@ func TaxInvoiceHTML() string {
           </tr>
           <tr>
             <td style="font-weight: bold;">BSB / Acc No.</td>
-            <td>{{#if clinic_payment_details}}{{clinic_payment_details}}{{else}}083-000 / 98765432{{/if}}</td>
+            <td>{{coalesce custom_payment_bsb "063-000"}} / {{coalesce custom_payment_account "12345678"}}</td>
           </tr>
           <tr>
             <td style="font-weight: bold;">Due Date</td>
-            <td>14 days from issue</td>
+            <td>{{due_date_display}}</td>
           </tr>
           <tr>
             <td style="font-weight: bold;">Reference</td>
@@ -72,11 +85,11 @@ func TaxInvoiceHTML() string {
           </tr>
           <tr>
             <td style="font-weight: bold;">BSB / Acc No.</td>
-            <td>{{coalesce clinic_payment_details "083-000 / 98765432"}}</td>
+            <td>{{coalesce custom_payment_bsb "063-000"}} / {{coalesce custom_payment_account "12345678"}}</td>
           </tr>
           <tr>
             <td style="font-weight: bold;">Due Date</td>
-            <td>14 days from issue</td>
+            <td>{{due_date_display}}</td>
           </tr>
           <tr>
             <td style="font-weight: bold;">Reference</td>
@@ -109,5 +122,5 @@ func TaxInvoiceHTML() string {
     </p>
   </div>
   {{/if}}
-</div>{{/unless}}{{/unless}}`, Header("TAX INVOICE", "Invoice No.", TaxInvoiceBillToBanner()), ServiceFeeIntroRow(), TaxSummarySection())
+</div>{{/unless}}{{/unless}}`, Header("TAX INVOICE", "Invoice No.", TaxInvoiceBillToBanner()), TaxSummarySection())
 }

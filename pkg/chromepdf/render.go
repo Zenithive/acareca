@@ -91,6 +91,20 @@ func Render(html, css string, data map[string]any) (string, error) {
 		return "", fmt.Errorf("chromepdf: html render failed: %w", err)
 	}
 
+	// Dynamic external resource pre-connect setup
+	var fontLinks strings.Builder
+	if ts, ok := data["template_settings"].(map[string]any); ok {
+		fontLinks.WriteString(`<link rel="preconnect" href="https://fonts.googleapis.com">`)
+		fontLinks.WriteString(`<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>`)
+
+		if headerFont, _ := ts["header_font_family_css"].(string); headerFont != "" {
+			fontLinks.WriteString(fmt.Sprintf(`<link href="https://fonts.googleapis.com/css2?family=%s:wght@400;700&display=swap" rel="stylesheet">`, headerFont))
+		}
+		if bodyFont, _ := ts["body_font_family_css"].(string); bodyFont != "" {
+			fontLinks.WriteString(fmt.Sprintf(`<link href="https://fonts.googleapis.com/css2?family=%s:wght@400;700&display=swap" rel="stylesheet">`, bodyFont))
+		}
+	}
+
 	// Wrap in a full HTML document so Chrome has a proper DOM
 	return fmt.Sprintf(`<!DOCTYPE html>
 <html>
@@ -117,6 +131,27 @@ func toFloat64(v any) float64 {
 	}
 }
 
+// insertCommas splits the string at decimal and puts thousands commas into the whole number part
+func insertCommas(s string) string {
+	parts := strings.Split(s, ".")
+	intPart := parts[0]
+
+	var res []string
+	l := len(intPart)
+	for i, c := range intPart {
+		res = append(res, string(c))
+		if (l-i-1)%3 == 0 && i != l-1 {
+			res = append(res, ",")
+		}
+	}
+
+	out := strings.Join(res, "")
+	if len(parts) > 1 {
+		out += "." + parts[1]
+	}
+	return out
+}
+
 func init() {
 	// coalesce is now handled by the pre-processor above; this single-arg
 	// registration is kept so any stray {{coalesce x}} in old stored templates
@@ -139,7 +174,8 @@ func init() {
 	})
 
 	raymond.RegisterHelper("format_currency", func(amount float64) raymond.SafeString {
-		return raymond.SafeString(fmt.Sprintf("$%.2f", math.Abs(amount)))
+		formattedRaw := fmt.Sprintf("%.2f", math.Abs(amount))
+		return raymond.SafeString("$" + insertCommas(formattedRaw))
 	})
 
 	raymond.RegisterHelper("format_table_amount", func(row any) raymond.SafeString {
@@ -152,7 +188,8 @@ func init() {
 			}
 		}
 		amount := toFloat64(m["amount"])
-		formatted := fmt.Sprintf("$%.2f", math.Abs(amount))
+		formattedRaw := fmt.Sprintf("%.2f", math.Abs(amount))
+		formatted := "$" + insertCommas(formattedRaw)
 		if neg, _ := m["is_negative"].(bool); neg {
 			return raymond.SafeString(fmt.Sprintf("(%s)", formatted))
 		}

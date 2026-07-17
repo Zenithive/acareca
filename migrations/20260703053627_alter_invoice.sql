@@ -83,7 +83,8 @@ BEGIN
         'NET_PATIENT_FEES', 
         'COMMISSION', 
         'NET_SETTLEMENT', 
-        'SERVICE_FACILITY'
+        'SERVICE_FACILITY',
+        'PATIENT_FEE_ADJUSTMENT'
     );
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;

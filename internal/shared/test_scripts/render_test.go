@@ -1,8 +1,10 @@
-package chromepdf
+package test_scripts
 
 import (
 	"strings"
 	"testing"
+
+	"github.com/iamarpitzala/acareca/pkg/chromepdf"
 )
 
 func TestCoalescePreProcessor(t *testing.T) {
@@ -76,7 +78,7 @@ func TestCoalescePreProcessor(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := Render(tt.tmpl, "", tt.data)
+			result, err := chromepdf.Render(tt.tmpl, "", tt.data)
 			if err != nil {
 				t.Fatalf("Render error: %v", err)
 			}

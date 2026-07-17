@@ -22,7 +22,7 @@ func (p *JSONParser) buildNode(exp *Expression) (Evaluator, error) {
 
 	switch exp.Type {
 
-	case "constant":
+	case CONSTANT:
 		if exp.Value == nil {
 			return nil, fmt.Errorf("constant value required")
 		}
@@ -31,12 +31,12 @@ func (p *JSONParser) buildNode(exp *Expression) (Evaluator, error) {
 			Value: *exp.Value,
 		}, nil
 
-	case "field":
+	case FIELD:
 		return &FieldNode{
 			Key: exp.Key,
 		}, nil
 
-	case "bas_code":
+	case BASCODE:
 		if exp.Key == "" {
 			return nil, fmt.Errorf("bas code key required")
 		}
@@ -45,7 +45,7 @@ func (p *JSONParser) buildNode(exp *Expression) (Evaluator, error) {
 			Key: exp.Key,
 		}, nil
 
-	case "operator":
+	case OPERATOR:
 
 		left, err := p.buildNode(exp.Left)
 		if err != nil {
