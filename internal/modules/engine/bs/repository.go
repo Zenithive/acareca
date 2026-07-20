@@ -27,11 +27,14 @@ func (r *repository) GetBalanceSheet(ctx context.Context, practitionerIDs []uuid
 	args := []interface{}{practitionerIDs}
 	idx := 2
 
+	// Apply end date filter to transaction dates
 	if f.EndDate != nil && *f.EndDate != "" {
 		conditions = append(conditions, fmt.Sprintf("date::DATE <= $%d::DATE", idx))
 		args = append(args, *f.EndDate)
 		idx++
 	}
+
+	// Apply user_id filter to transactions submitted by a specific user
 	if f.UserID != nil && *f.UserID != "" {
 		userID, err := uuid.Parse(*f.UserID)
 		if err != nil {
@@ -44,6 +47,7 @@ func (r *repository) GetBalanceSheet(ctx context.Context, practitionerIDs []uuid
 
 	innerQuery := fmt.Sprintf("%s WHERE %s", base, strings.Join(conditions, " AND "))
 
+	// Aggregate by account to get totals across all filtered transactions
 	query := fmt.Sprintf(`
 		SELECT
 			practitioner_id,
@@ -53,6 +57,7 @@ func (r *repository) GetBalanceSheet(ctx context.Context, practitionerIDs []uuid
 			coa_id,
 			SUM(signed_amount) AS balance
 		FROM (%s) AS filtered
+		WHERE account_type IN ('Asset', 'Liability', 'Equity')
 		GROUP BY practitioner_id, account_type, account_code, account_name, coa_id
 		ORDER BY account_type, account_code
 	`, innerQuery)
