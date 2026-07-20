@@ -94,6 +94,7 @@ SELECT
         WHEN at.name = 'Revenue' THEN '1. Income'
         WHEN ff.section_type = 'OTHER_COST' THEN '3. Other Costs'
         WHEN at.name = 'Direct Cost' OR at.name = 'Expense' THEN '2. Cost of Sales'
+        WHEN at.name = 'Other - ITR Reporting Item' THEN '4. Itr Reporting Item'
         ELSE '3. Other Costs' 
     END AS pl_section
 FROM
