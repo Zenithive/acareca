@@ -80,12 +80,6 @@ func (h *handler) GetById(c *gin.Context) {
 // @Security BearerToken
 // @Router /form [post]
 func (h *handler) CreateFormWithFields(c *gin.Context) {
-	// practitionerID, ok := util.GetPractitionerID(c)
-	// if !ok {
-	// 	return
-	// }
-
-	// Get Role and appropriate ID
 	role := c.GetString("role")
 	var actorID uuid.UUID
 	var ok bool
@@ -152,11 +146,6 @@ func (h *handler) UpdateFormWithFields(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, errors.New("form id is required"))
 		return
 	}
-
-	// practitionerID, ok := util.GetPractitionerID(c)
-	// if !ok {
-	// 	return
-	// }
 
 	role := c.GetString("role")
 
