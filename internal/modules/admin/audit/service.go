@@ -84,13 +84,6 @@ func (s *service) LogWithNotification(ctx context.Context, entry *LogEntry, noti
 func (s *service) enrichEntry(ctx context.Context, entry *LogEntry) {
 	meta := auditctx.GetMetadata(ctx)
 
-	// DEBUG: Log context metadata
-	log.Printf("[DEBUG-ENRICH] Action: %s | Context UserID: %v | Context PracticeID: %v",
-		entry.Action,
-		meta.UserID,
-		meta.PracticeID,
-	)
-
 	if entry.PracticeID == nil {
 		entry.PracticeID = meta.PracticeID
 	}
@@ -103,13 +96,6 @@ func (s *service) enrichEntry(ctx context.Context, entry *LogEntry) {
 	if entry.UserAgent == nil {
 		entry.UserAgent = meta.UserAgent
 	}
-
-	// DEBUG: Log enriched entry
-	log.Printf("[DEBUG-ENRICHED] Action: %s | Entry UserID: %v | Entry PracticeID: %v",
-		entry.Action,
-		entry.UserID,
-		entry.PracticeID,
-	)
 }
 
 func (s *service) asyncWorker() {
@@ -219,8 +205,6 @@ func (s *service) buildAdminRecipients(ctx context.Context, excludeUserID *uuid.
 		return recipients
 	}
 
-	log.Printf("[DEBUG-RECIPIENTS] Building admin recipients - Total admins: %d, Exclude UserID: %v", len(admins), excludeUserID)
-
 	for _, admin := range admins {
 		// Skip if this admin is the one to be excluded
 		if excludeUserID != nil && admin.User.ID == *excludeUserID {
@@ -235,7 +219,6 @@ func (s *service) buildAdminRecipients(ctx context.Context, excludeUserID *uuid.
 		})
 	}
 
-	log.Printf("[DEBUG-RECIPIENTS] Final recipient count: %d", len(recipients))
 	return recipients
 }
 
@@ -291,13 +274,6 @@ func (s *service) publishAuditLogNotification(entry *LogEntry) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-
-	// DEBUG: Log entry details to check if UserID is present
-	log.Printf("[DEBUG-AUDIT] Action: %s | UserID: %v | PracticeID: %v",
-		entry.Action,
-		entry.UserID,
-		entry.PracticeID,
-	)
 
 	var err error
 	// Get User Name

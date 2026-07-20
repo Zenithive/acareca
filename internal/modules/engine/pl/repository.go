@@ -71,6 +71,11 @@ func (r *repository) GetMonthlySummary(ctx context.Context, clinicID uuid.UUID, 
 			COALESCE(SUM(total_net)   FILTER (WHERE pl_section = '3. Other Expenses'),  0) AS other_expenses_net,
 			COALESCE(SUM(total_gst)   FILTER (WHERE pl_section = '3. Other Expenses'),  0) AS other_expenses_gst,
 			COALESCE(SUM(total_gross) FILTER (WHERE pl_section = '3. Other Expenses'),  0) AS other_expenses_gross,
+
+			COALESCE(SUM(total_net)   FILTER (WHERE pl_section = '4. Itr Reporting Item'),  0) AS itr_reporting_expenses_net,
+			COALESCE(SUM(total_gst)   FILTER (WHERE pl_section = '4. Itr Reporting Item'),  0) AS itr_reporting_expenses_gst,
+			COALESCE(SUM(total_gross) FILTER (WHERE pl_section = '4. Itr Reporting Item'),  0) AS itr_reporting_expenses_gross,
+
 			COALESCE(SUM(sg_net_amount), 0) AS net_profit_net,
 			COALESCE(SUM(sg_gross_amount), 0) AS net_profit_gross
 		FROM section_totals
