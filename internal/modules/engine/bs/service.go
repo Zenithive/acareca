@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"sort"
 	"strings"
 	"time"
 
@@ -82,27 +83,29 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 		targetPracIDs = []uuid.UUID{actorID}
 
 	case util.RoleAccountant:
+		// If practitioner_id filter is provided, use it
 		if f.PractitionerID != nil && *f.PractitionerID != "" {
 			pID, err := uuid.Parse(*f.PractitionerID)
-			if err == nil {
-				practitionerID = pID
-				targetPracIDs = []uuid.UUID{pID}
+			if err != nil {
+				return nil, fmt.Errorf("invalid practitioner_id: %w", err)
 			}
+			practitionerID = pID
+			targetPracIDs = []uuid.UUID{pID}
+		} else {
+			// No filter provided - fetch all linked practitioners
+			linked, err := s.invitationSvc.GetPractitionersLinkedToAccountant(ctx, actorID)
+			if err != nil {
+				return nil, fmt.Errorf("failed to fetch linked practitioners: %w", err)
+			}
+			if len(linked) == 0 {
+				return nil, errors.New("no linked practitioners found")
+			}
+			targetPracIDs = linked
+			practitionerID = linked[0]
 		}
 
 	default:
-		linked, err := s.invitationSvc.GetPractitionersLinkedToAccountant(ctx, actorID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to fetch linked practitioners: %w", err)
-		}
-		if len(linked) == 0 {
-			return nil, errors.New("no linked practitioners found")
-		}
-		targetPracIDs = linked
-
-		if len(linked) > 0 {
-			practitionerID = linked[0]
-		}
+		return nil, fmt.Errorf("unsupported role: %s", role)
 	}
 
 	endDate := ""
@@ -194,16 +197,28 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 	for _, v := range assetMap {
 		assets = append(assets, v)
 	}
+	// Sort assets by account code to ensure consistent ordering
+	sort.Slice(assets, func(i, j int) bool {
+		return assets[i].Code < assets[j].Code
+	})
 
 	liabilities := []RsAccount{}
 	for _, v := range liabMap {
 		liabilities = append(liabilities, v)
 	}
+	// Sort liabilities by account code to ensure consistent ordering
+	sort.Slice(liabilities, func(i, j int) bool {
+		return liabilities[i].Code < liabilities[j].Code
+	})
 
 	equitySect := []RsAccount{}
 	for _, v := range otherEquityMap {
 		equitySect = append(equitySect, v)
 	}
+	// Sort equity by account code to ensure consistent ordering
+	sort.Slice(equitySect, func(i, j int) bool {
+		return equitySect[i].Code < equitySect[j].Code
+	})
 
 	addEquityItem := func(code int16, name string, balance float64) {
 		if balance == 0 {
@@ -216,6 +231,7 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 			return err
 		})
 		if err != nil {
+			log.Printf("[WARN] Failed to get COA ID for account code %d (practitioner %s): %v", code, practitionerID, err)
 			return
 		}
 
@@ -235,7 +251,8 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 
 	netAssets := totalAssets - totalLiabilities
 	totalEquity := totalOwnerEquity.TotalEquity + totalOtherEquity
-	totalLiabilitiesAndEquity := totalLiabilities + totalEquity
+	// Balance Sheet Equation: Assets = Liabilities + Equity + Current Year Profit
+	totalLiabilitiesAndEquity := totalLiabilities + totalEquity + totalOwnerEquity.CurrentYearProfit
 	displayEnd := formatDateForDisplay(endDate)
 
 	result := &RsBalanceSheet{
@@ -312,26 +329,20 @@ func (s *service) ExportBalanceSheet(ctx context.Context, data []*RsBalanceSheet
 			}
 		}
 	} else {
-		if role == util.RolePractitioner {
-			prac, err := s.practitionerSvc.GetPractitioner(ctx, uuid.MustParse(targetID))
-			entityName = fullName
-			if err == nil {
-				if prac.ABN != nil {
-					practitionerABN = *prac.ABN
-				}
+		// No specific practitioner - use accountant's details
+		acc, err := s.accountantRepo.GetAccountantByUserID(ctx, userID.String())
+		if err == nil {
+			if acc.EntityName != nil {
+				entityName = *acc.EntityName
+			} else {
+				entityName = fullName
+			}
+			if acc.ABN != nil {
+				practitionerABN = *acc.ABN
 			}
 		} else {
-			acc, err := s.accountantRepo.GetAccountantByUserID(ctx, userID.String())
-			if err == nil {
-				if acc.EntityName != nil {
-					entityName = *acc.EntityName
-				} else {
-					entityName = fullName
-				}
-				if acc.ABN != nil {
-					practitionerABN = *acc.ABN
-				}
-			}
+			// Fallback to user's full name
+			entityName = fullName
 		}
 	}
 
@@ -361,7 +372,7 @@ func (s *service) ExportBalanceSheet(ctx context.Context, data []*RsBalanceSheet
 			Equity:                    make([]bsexport.RsAccount, len(yearData.Equity)),
 			CurrentYearProfit:         yearData.CurrentYearProfit,
 			TotalEquity:               yearData.TotalEquity,
-			TotalLiabilitiesAndEquity: yearData.TotalLiabilities + yearData.TotalEquity,
+			TotalLiabilitiesAndEquity: yearData.TotalLiabilitiesAndEquity,
 		}
 
 		for i, acc := range yearData.Assets {
@@ -526,12 +537,12 @@ func (s *service) notifyReportExport(ctx context.Context, entityID uuid.UUID, ac
 		log.Printf("[INFO] no recipients found for report notification")
 		return nil
 	}
+	
 	var action string
-
 	switch eventType {
-	case util.EventPLReportGenerated:
+	case util.EventPLReportGenerated, util.EventBalanceSheetGenerated, util.EventBASReportGenerated, util.EventActivityStatementGenerated:
 		action = "Generated"
-	case util.EventPLReportExport:
+	case util.EventPLReportExport, util.EventBalanceSheetExport, util.EventBASReportExport, util.EventActivityStatementExport, util.EventTransactionReportExport:
 		action = "Exported"
 	default:
 		action = "Generated"

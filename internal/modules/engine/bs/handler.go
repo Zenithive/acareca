@@ -122,10 +122,12 @@ func (h *handler) ExportBalanceSheet(c *gin.Context) {
 		}
 	}
 
-	if numComparisons > 1 && f.EndDate != nil && *f.EndDate != "" {
+	// Fetch historical years for comparison if requested
+	// numComparisons: 0 = current year only, 1 = current + 1 past year, etc.
+	if numComparisons >= 1 && f.EndDate != nil && *f.EndDate != "" {
 		baseTime, err := time.Parse("2006-01-02", *f.EndDate)
 		if err == nil {
-			for i := 1; i <= numComparisons-1; i++ {
+			for i := 1; i <= numComparisons; i++ {
 				pastEndDate := baseTime.AddDate(-i, 0, 0).Format("2006-01-02")
 
 				historicalFilter := BSFilter{
@@ -137,6 +139,8 @@ func (h *handler) ExportBalanceSheet(c *gin.Context) {
 				pastYearData, err := h.svc.GetBalanceSheet(c.Request.Context(), &historicalFilter, *actorID, role, userID)
 				if err == nil && pastYearData != nil {
 					allYearsReportData = append(allYearsReportData, pastYearData)
+				} else {
+					log.Printf("[WARN] Failed to fetch historical data for year %d: %v", i, err)
 				}
 			}
 		}
