@@ -50,12 +50,13 @@ type RsReportGroup struct {
 }
 
 type RsReport struct {
-	ReportMetadata RsReportMetadata `json:"report_metadata"`
-	Income         RsReportGroup    `json:"income"`
-	CostOfSales    RsReportGroup    `json:"cost_of_sales"`
-	GrossProfit    float64          `json:"gross_profit"`
-	OtherCosts     RsReportGroup    `json:"other_costs"`
-	NetProfit      float64          `json:"net_profit"`
+	ReportMetadata   RsReportMetadata `json:"report_metadata"`
+	Income           RsReportGroup    `json:"income"`
+	CostOfSales      RsReportGroup    `json:"cost_of_sales"`
+	GrossProfit      float64          `json:"gross_profit"`
+	OtherCosts       RsReportGroup    `json:"other_costs"`
+	ItrReportingItem RsReportGroup    `json:"itr_reporting_item"`
+	NetProfit        float64          `json:"net_profit"`
 }
 
 type RsReportMetadata struct {

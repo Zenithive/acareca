@@ -322,6 +322,7 @@ func buildReport(f *PLReportFilter, rows []*PLReportRow, summary *PLSummaryRow) 
 	income := buildGroup("1. Income")
 	cos := buildGroup("2. Cost of Sales")
 	otherCosts := buildGroup("3. Other Costs")
+	itrReportingItem := buildGroup("4. Itr Reporting Item")
 
 	grossProfit := round2(summary.GrossProfitNet)
 	netProfit := round2(summary.NetProfitNet)
@@ -341,11 +342,12 @@ func buildReport(f *PLReportFilter, rows []*PLReportRow, summary *PLSummaryRow) 
 			DateUntil:        dateUntil,
 			OverallNetProfit: netProfit,
 		},
-		Income:      income,
-		CostOfSales: cos,
-		GrossProfit: grossProfit,
-		OtherCosts:  otherCosts,
-		NetProfit:   netProfit,
+		Income:           income,
+		CostOfSales:      cos,
+		GrossProfit:      grossProfit,
+		OtherCosts:       otherCosts,
+		ItrReportingItem: itrReportingItem,
+		NetProfit:        netProfit,
 	}
 }
 
