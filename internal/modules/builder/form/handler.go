@@ -3,6 +3,7 @@ package form
 import (
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -80,12 +81,6 @@ func (h *handler) GetById(c *gin.Context) {
 // @Security BearerToken
 // @Router /form [post]
 func (h *handler) CreateFormWithFields(c *gin.Context) {
-	// practitionerID, ok := util.GetPractitionerID(c)
-	// if !ok {
-	// 	return
-	// }
-
-	// Get Role and appropriate ID
 	role := c.GetString("role")
 	var actorID uuid.UUID
 	var ok bool
@@ -153,11 +148,6 @@ func (h *handler) UpdateFormWithFields(c *gin.Context) {
 		return
 	}
 
-	// practitionerID, ok := util.GetPractitionerID(c)
-	// if !ok {
-	// 	return
-	// }
-
 	role := c.GetString("role")
 
 	if strings.EqualFold(role, util.RoleAccountant) {
@@ -171,6 +161,9 @@ func (h *handler) UpdateFormWithFields(c *gin.Context) {
 		return
 	}
 
+	forceDeleteParam := c.Query("force_delete")
+	forceDelete, _ := strconv.ParseBool(forceDeleteParam)
+
 	var req RqUpdateFormWithFields
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
@@ -181,17 +174,17 @@ func (h *handler) UpdateFormWithFields(c *gin.Context) {
 		req.Update[i].Sanitize()
 	}
 
-	if err := c.ShouldBindQuery(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, err)
-		return
-	}
-
 	if err := util.ValidateStruct(&req); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
 
 	req.ID = &formID
+
+	// Set ForceDelete on the request struct if supplied via query param
+	if forceDelete {
+		req.ForceDelete = &forceDelete
+	}
 
 	if err := req.ValidateShares(); err != nil {
 		response.Error(c, http.StatusBadRequest, err)

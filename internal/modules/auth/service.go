@@ -411,11 +411,11 @@ func (s *service) GoogleCallback(ctx context.Context, code string) (*RsToken, er
 			return err
 		}
 
-		// if isNewUser {
-		// 	if _, err = s.practitionerSvc.CreatePractitioner(ctx, &practitioner.RqCreatePractitioner{UserID: user.ID.String()}, tx); err != nil {
-		// 		return err
-		// 	}
-		// }
+		if isNewUser {
+			if _, err = s.practitionerSvc.CreatePractitioner(ctx, &practitioner.RqCreatePractitioner{UserID: user.ID.String()}, tx); err != nil {
+				return err
+			}
+		}
 		return nil
 	}); err != nil {
 		return nil, fmt.Errorf("google oauth transaction: %w", err)
@@ -434,11 +434,6 @@ func (s *service) GoogleCallback(ctx context.Context, code string) (*RsToken, er
 		EntityID:   &userIDStr,
 		AfterState: map[string]interface{}{"email": user.Email, "provider": "google"},
 	})
-
-	// practitionerID, err := s.practitionerSvc.GetPractitionerByUserID(ctx, user.ID.String())
-	// if err != nil {
-	// 	return nil, err
-	// }
 
 	return s.issueTokens(ctx, user, authProvider.UserID.String())
 }
