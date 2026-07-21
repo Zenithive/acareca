@@ -435,6 +435,10 @@ func (s *service) ExportPLReport(ctx context.Context, data []*RsReport, exportTy
 				GroupTotal: d.OtherCosts.GroupTotal,
 				Accounts:   make([]plexport.RsReportAccount, len(d.OtherCosts.Accounts)),
 			},
+			ITRReportingItem: plexport.RsReportGroup{
+				GroupTotal: d.ItrReportingItem.GroupTotal,
+				Accounts:   make([]plexport.RsReportAccount, len(d.ItrReportingItem.Accounts)),
+			},
 			NetProfit: d.NetProfit,
 		}
 
@@ -454,6 +458,13 @@ func (s *service) ExportPLReport(ctx context.Context, data []*RsReport, exportTy
 		}
 		for j, acc := range d.OtherCosts.Accounts {
 			exportSlice[i].OtherCosts.Accounts[j] = plexport.RsReportAccount{
+				CoaID:      acc.CoaID,
+				CoaName:    acc.CoaName,
+				TotalValue: acc.TotalValue,
+			}
+		}
+		for j, acc := range d.ItrReportingItem.Accounts {
+			exportSlice[i].ITRReportingItem.Accounts[j] = plexport.RsReportAccount{
 				CoaID:      acc.CoaID,
 				CoaName:    acc.CoaName,
 				TotalValue: acc.TotalValue,
