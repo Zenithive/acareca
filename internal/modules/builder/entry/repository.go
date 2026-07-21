@@ -1094,7 +1094,7 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 			}
 
 			zeroGst := 0.0
-			noteStr := "Calculated Net Income balance translation for selected period"
+			noteStr := "Synced from Profit & Loss"
 
 			result = append(result, &RsCoaEntryDetail{
 				ID:              uuid.New().String(),
