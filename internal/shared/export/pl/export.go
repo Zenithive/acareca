@@ -29,12 +29,13 @@ type RsReportMetadata struct {
 }
 
 type RsReport struct {
-	ReportMetadata RsReportMetadata `json:"report_metadata"`
-	Income         RsReportGroup    `json:"income"`
-	CostOfSales    RsReportGroup    `json:"cost_of_sales"`
-	GrossProfit    float64          `json:"gross_profit"`
-	OtherCosts     RsReportGroup    `json:"other_costs"`
-	NetProfit      float64          `json:"net_profit"`
+	ReportMetadata   RsReportMetadata `json:"report_metadata"`
+	Income           RsReportGroup    `json:"income"`
+	CostOfSales      RsReportGroup    `json:"cost_of_sales"`
+	GrossProfit      float64          `json:"gross_profit"`
+	OtherCosts       RsReportGroup    `json:"other_costs"`
+	ITRReportingItem RsReportGroup    `json:"itr_reporting_item"`
+	NetProfit        float64          `json:"net_profit"`
 }
 
 func Round2(v float64) float64 {
@@ -271,6 +272,8 @@ func GenerateExcelReport(data []*RsReport, config export.ExportConfig) (*exceliz
 					targets = yr.CostOfSales.Accounts
 				case "other":
 					targets = yr.OtherCosts.Accounts
+				case "itr":
+					targets = yr.ITRReportingItem.Accounts
 				}
 				for _, acc := range targets {
 					if !seen[acc.CoaID] {
@@ -279,8 +282,6 @@ func GenerateExcelReport(data []*RsReport, config export.ExportConfig) (*exceliz
 					}
 				}
 			}
-		} else if title == "ITR REPORTABLE ITEMS" {
-			uniqueAccounts = append(uniqueAccounts, UniqueAcc{CoaID: "mock_itr_1", CoaName: "Sample Reportable Item"})
 		}
 
 		if len(uniqueAccounts) > 0 {
@@ -316,6 +317,8 @@ func GenerateExcelReport(data []*RsReport, config export.ExportConfig) (*exceliz
 						checkList = yr.CostOfSales.Accounts
 					case "other":
 						checkList = yr.OtherCosts.Accounts
+					case "itr":
+						checkList = yr.ITRReportingItem.Accounts
 					}
 
 					for _, acc := range checkList {
@@ -388,6 +391,8 @@ func GenerateExcelReport(data []*RsReport, config export.ExportConfig) (*exceliz
 
 	otherCostsCells := renderGroupMultiColumn("OTHER COSTS", "other")
 
+	itrCells := renderGroupMultiColumn("ITR REPORTABLE ITEMS", "itr")
+
 	currentRow++
 	f.SetRowHeight(sheet, currentRow, 26)
 	f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), "NET PROFIT")
@@ -398,26 +403,12 @@ func GenerateExcelReport(data []*RsReport, config export.ExportConfig) (*exceliz
 		colLetter := getColLetter(yIdx + 2)
 		targetCell := fmt.Sprintf("%s%d", colLetter, currentRow)
 		netProfitCells[yIdx] = targetCell
-		f.SetCellFormula(sheet, targetCell, fmt.Sprintf("%s-%s", grossProfitCells[yIdx], otherCostsCells[yIdx]))
+		f.SetCellFormula(sheet, targetCell, fmt.Sprintf("%s-%s-%s", grossProfitCells[yIdx], otherCostsCells[yIdx], itrCells[yIdx]))
 		f.SetCellStyle(sheet, targetCell, targetCell, styles.ProfitGreen)
 	}
 
 	currentRow++
 	f.SetRowHeight(sheet, currentRow, 12)
-
-	itrTotalCells := renderGroupMultiColumn("ITR REPORTABLE ITEMS", "")
-
-	currentRow++
-	f.SetRowHeight(sheet, currentRow, 26)
-	f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), "NET PROFIT AFTER ITR REPORTABLE ITEMS")
-	f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styles.Profit)
-
-	for yIdx := 0; yIdx < numYears; yIdx++ {
-		colLetter := getColLetter(yIdx + 2)
-		targetCell := fmt.Sprintf("%s%d", colLetter, currentRow)
-		f.SetCellFormula(sheet, targetCell, fmt.Sprintf("%s-%s", netProfitCells[yIdx], itrTotalCells[yIdx]))
-		f.SetCellStyle(sheet, targetCell, targetCell, styles.ProfitGreen)
-	}
 
 	f.SetColWidth(sheet, "A", "A", 60)
 	for i := 1; i <= numYears; i++ {
