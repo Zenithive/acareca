@@ -1052,8 +1052,7 @@ func roundEntry(v float64) float64 {
 }
 
 func (s *Service) ListCoaEntries(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string, userID uuid.UUID) (*util.RsList, error) {
-	var userIDStr string
-	userIDStr = userID.String()
+	var userIDStr string = userID.String()
 	parsedActorID := actorID.String()
 
 	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
@@ -1070,15 +1069,19 @@ func (s *Service) ListCoaEntries(ctx context.Context, filter TransactionFilter, 
 
 	f := filter.ToCommonFilter()
 
-	incomingPageIndex := 0
+	pageIndex := 0
 	if f.Offset != nil {
-		incomingPageIndex = *f.Offset
+		pageIndex = *f.Offset
 	}
 
 	pageSize := 10
 	if f.Limit != nil && *f.Limit > 0 {
 		pageSize = *f.Limit
 	}
+
+	dbOffset := pageIndex * pageSize
+	f.Offset = &dbOffset
+	f.Limit = &pageSize
 
 	items, err := s.repo.ListCoaEntries(ctx, f, actorID, role)
 	if err != nil {
@@ -1095,7 +1098,7 @@ func (s *Service) ListCoaEntries(ctx context.Context, filter TransactionFilter, 
 	}
 
 	var rs util.RsList
-	rs.MapToList(items, total, incomingPageIndex, pageSize)
+	rs.MapToList(items, total, pageIndex, pageSize)
 	return &rs, nil
 }
 
@@ -1124,6 +1127,7 @@ func (s *Service) ListCoaEntryDetails(ctx context.Context, coaID string, filter 
 
 	dbOffset := pageIndex * pageSize
 	f.Offset = &dbOffset
+	f.Limit = &pageSize
 
 	items, err := s.repo.ListCoaEntryDetails(ctx, coaName, f, actorID, role)
 	if err != nil {
