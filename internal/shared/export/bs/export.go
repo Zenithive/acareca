@@ -20,15 +20,15 @@ type RsAccount struct {
 
 // RsBalanceSheet represents the complete balance sheet
 type RsBalanceSheet struct {
-	EndDate                   string      `json:"end_date"`
-	Assets                    []RsAccount `json:"assets"`
-	TotalAssets               float64     `json:"total_assets"`
-	Liabilities               []RsAccount `json:"liabilities"`
-	TotalLiabilities          float64     `json:"total_liabilities"`
-	Equity                    []RsAccount `json:"equity"`
-	CurrentYearProfit         float64     `json:"current_year_profit"`
-	TotalEquity               float64     `json:"total_equity"`
-	TotalLiabilitiesAndEquity float64     `json:"total_liabilities_and_equity"`
+	EndDate           string      `json:"end_date"`
+	Assets            []RsAccount `json:"assets"`
+	TotalAssets       float64     `json:"total_assets"`
+	Liabilities       []RsAccount `json:"liabilities"`
+	TotalLiabilities  float64     `json:"total_liabilities"`
+	Equity            []RsAccount `json:"equity"`
+	CurrentYearProfit float64     `json:"current_year_profit"`
+	TotalEquity       float64     `json:"total_equity"`
+	NetAssets         float64     `json:"net_assets"`
 }
 
 type StyleSet struct {
@@ -401,8 +401,8 @@ func GenerateExcelReport(data []*RsBalanceSheet, config export.ExportConfig) (*e
 	}
 
 	currentRow++
-	f.SetRowHeight(sheet, currentRow, 12)
 
+	equityTotalRows := make([]string, numYears)
 	f.SetRowHeight(sheet, currentRow, 22)
 	f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), "TOTAL EQUITY")
 	f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styles.GroupTotalLabel)
@@ -410,6 +410,7 @@ func GenerateExcelReport(data []*RsBalanceSheet, config export.ExportConfig) (*e
 	for yIdx := 0; yIdx < numYears; yIdx++ {
 		colLetter := getColLetter(yIdx + 2)
 		totalCell := fmt.Sprintf("%s%d", colLetter, currentRow)
+		equityTotalRows[yIdx] = totalCell
 
 		var subtotalStr string
 		if hasEquity {
@@ -422,10 +423,7 @@ func GenerateExcelReport(data []*RsBalanceSheet, config export.ExportConfig) (*e
 		f.SetCellStyle(sheet, totalCell, totalCell, styles.GroupTotal)
 	}
 
-	currentRow++
-	f.SetRowHeight(sheet, currentRow, 12)
-
-	currentRow++
+	currentRow += 2
 	f.SetRowHeight(sheet, currentRow, 26)
 	f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), "NET ASSETS")
 	f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styles.Profit)
@@ -434,7 +432,7 @@ func GenerateExcelReport(data []*RsBalanceSheet, config export.ExportConfig) (*e
 		colLetter := getColLetter(yIdx + 2)
 		targetCell := fmt.Sprintf("%s%d", colLetter, currentRow)
 
-		formula := fmt.Sprintf("%s-%s", assetTotalRows[yIdx], liabilityTotalRows[yIdx])
+		formula := fmt.Sprintf("%s+%s", liabilityTotalRows[yIdx], equityTotalRows[yIdx])
 		f.SetCellFormula(sheet, targetCell, formula)
 		f.SetCellStyle(sheet, targetCell, targetCell, styles.ProfitGreen)
 	}

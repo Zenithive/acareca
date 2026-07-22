@@ -177,7 +177,6 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 			totalLiabilities += row.Balance
 
 		case "Equity":
-			// 🚀 COA FIX: Filter using your new COA template system codes
 			if row.AccountCode != 900 && row.AccountCode != 910 &&
 				row.AccountCode != 920 && row.AccountCode != 960 &&
 				row.AccountCode != 970 && row.AccountCode != 980 {
@@ -233,22 +232,21 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 	addEquityItem(900, "Owner A Drawings", -totalOwnerEquity.Drawings)
 	addEquityItem(960, "Retained Earnings", totalOwnerEquity.RetainedEarnings)
 
-	netAssets := totalAssets - totalLiabilities
 	totalEquity := totalOwnerEquity.TotalEquity + totalOtherEquity
-	totalLiabilitiesAndEquity := totalLiabilities + totalEquity
+	netAssets := totalLiabilities + totalEquity
+
 	displayEnd := formatDateForDisplay(endDate)
 
 	result := &RsBalanceSheet{
-		EndDate:                   displayEnd,
-		Assets:                    assets,
-		TotalAssets:               totalAssets,
-		Liabilities:               liabilities,
-		TotalLiabilities:          totalLiabilities,
-		NetAssets:                 math.Round(netAssets*100) / 100,
-		Equity:                    equitySect,
-		CurrentYearProfit:         totalOwnerEquity.CurrentYearProfit,
-		TotalEquity:               math.Round(totalEquity*100) / 100,
-		TotalLiabilitiesAndEquity: math.Round(totalLiabilitiesAndEquity*100) / 100,
+		EndDate:           displayEnd,
+		Assets:            assets,
+		TotalAssets:       totalAssets,
+		Liabilities:       liabilities,
+		TotalLiabilities:  totalLiabilities,
+		Equity:            equitySect,
+		CurrentYearProfit: totalOwnerEquity.CurrentYearProfit,
+		TotalEquity:       math.Round(totalEquity*100) / 100,
+		NetAssets:         math.Round(netAssets*100) / 100,
 	}
 
 	userIDStr := userID.String()
@@ -353,15 +351,15 @@ func (s *service) ExportBalanceSheet(ctx context.Context, data []*RsBalanceSheet
 
 	for yearIdx, yearData := range data {
 		exportData := &bsexport.RsBalanceSheet{
-			EndDate:                   yearData.EndDate,
-			Assets:                    make([]bsexport.RsAccount, len(yearData.Assets)),
-			TotalAssets:               yearData.TotalAssets,
-			Liabilities:               make([]bsexport.RsAccount, len(yearData.Liabilities)),
-			TotalLiabilities:          yearData.TotalLiabilities,
-			Equity:                    make([]bsexport.RsAccount, len(yearData.Equity)),
-			CurrentYearProfit:         yearData.CurrentYearProfit,
-			TotalEquity:               yearData.TotalEquity,
-			TotalLiabilitiesAndEquity: yearData.TotalLiabilities + yearData.TotalEquity,
+			EndDate:           yearData.EndDate,
+			Assets:            make([]bsexport.RsAccount, len(yearData.Assets)),
+			TotalAssets:       yearData.TotalAssets,
+			Liabilities:       make([]bsexport.RsAccount, len(yearData.Liabilities)),
+			TotalLiabilities:  yearData.TotalLiabilities,
+			Equity:            make([]bsexport.RsAccount, len(yearData.Equity)),
+			CurrentYearProfit: yearData.CurrentYearProfit,
+			TotalEquity:       yearData.TotalEquity,
+			NetAssets:         yearData.NetAssets,
 		}
 
 		for i, acc := range yearData.Assets {
