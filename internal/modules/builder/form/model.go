@@ -41,11 +41,12 @@ type RsBulkSyncFields struct {
 }
 
 type RsFormWithFieldsSyncResult struct {
-	ClinicID     uuid.UUID   `json:"clinic_id"`
-	CreatedCount int         `json:"created_count"`
-	UpdatedCount int         `json:"updated_count"`
-	DeletedCount int         `json:"deleted_count"`
-	DeletedIDs   []uuid.UUID `json:"deleted_ids,omitempty"`
+	ClinicID            uuid.UUID   `json:"clinic_id"`
+	CreatedCount        int         `json:"created_count"`
+	UpdatedCount        int         `json:"updated_count"`
+	DeletedCount        int         `json:"deleted_count"`
+	DeletedIDs          []uuid.UUID `json:"deleted_ids,omitempty"`
+	DeletedEntriesCount int64       `json:"deleted_entries_count"`
 }
 
 type RqCreateFormWithFields struct {
