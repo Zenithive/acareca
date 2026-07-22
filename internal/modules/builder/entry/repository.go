@@ -49,6 +49,8 @@ type IRepository interface {
 	DeleteSystemBalancingValues(ctx context.Context, tx *sqlx.Tx, entryID uuid.UUID) error
 	GetActiveEntryValuesWithAccountType(ctx context.Context, tx *sqlx.Tx, entryID uuid.UUID) ([]*EntryValueWithAccountType, error)
 	UpdateEntryDate(ctx context.Context, tx *sqlx.Tx, entryID uuid.UUID, date string) error
+	// Deletes entry and associated entry values with provided Form Version ID
+	DeleteByFormVersionID(ctx context.Context, tx *sqlx.Tx, versionID uuid.UUID) (int64, error)
 }
 
 type Repository struct {
@@ -1373,4 +1375,35 @@ func (r *Repository) UpdateEntryDate(ctx context.Context, tx *sqlx.Tx, entryID u
 		return fmt.Errorf("update entry date: %w", err)
 	}
 	return nil
+}
+
+// DeleteByFormVersionID soft-deletes entries and values, returning the total deleted entries count.
+func (r *Repository) DeleteByFormVersionID(ctx context.Context, tx *sqlx.Tx, versionID uuid.UUID) (int64, error) {
+	// Soft-delete entry values
+	valDeleteQuery := `
+		UPDATE tbl_form_entry_value 
+		SET deleted_at = now() 
+		WHERE entry_id IN (
+			SELECT id FROM tbl_form_entry WHERE form_version_id = $1 AND deleted_at IS NULL
+		) AND deleted_at IS NULL`
+
+	if _, err := tx.ExecContext(ctx, valDeleteQuery, versionID); err != nil {
+		return 0, fmt.Errorf("delete form entry values by version_id tx: %w", err)
+	}
+
+	// Soft-delete parent entries
+	entryQuery := `
+		UPDATE tbl_form_entry 
+		SET deleted_at = now(), updated_at = now() 
+		WHERE form_version_id = $1 AND deleted_at IS NULL`
+
+	res, err := tx.ExecContext(ctx, entryQuery, versionID)
+	if err != nil {
+		return 0, fmt.Errorf("delete form entries by version_id tx: %w", err)
+	}
+
+	// Get count of deleted parent entries
+	deletedEntriesCount, _ := res.RowsAffected()
+
+	return deletedEntriesCount, nil
 }

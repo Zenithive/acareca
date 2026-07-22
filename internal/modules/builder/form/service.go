@@ -272,8 +272,19 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 			return errors.New("cannot update fields: no active version found")
 		}
 
-		// --- FIELD DELETION ---
+		// --- FORCE DELETE FORM ENTRIES (IF APPLICABLE) ---
 		forceDelete := req.ForceDelete != nil && *req.ForceDelete
+		if forceDelete && len(req.Delete) > 0 {
+			if s.entryRepo != nil {
+				deletedCount, err := s.entryRepo.DeleteByFormVersionID(ctx, tx, activeVersionID)
+				if err != nil {
+					return fmt.Errorf("failed to force delete entries for form version %s: %w", activeVersionID, err)
+				}
+				syncResult.DeletedEntriesCount = deletedCount
+			}
+		}
+
+		// --- FIELD DELETION ---
 		for _, id := range req.Delete {
 			if s.entryRepo != nil && !forceDelete {
 				has, err := s.entryRepo.HasSubmittedEntryValuesForField(ctx, id)
