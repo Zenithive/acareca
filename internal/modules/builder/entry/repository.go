@@ -580,6 +580,19 @@ func (r *Repository) ListCoaEntries(ctx context.Context, f common.Filter, actorI
 		"end_date":        "v.entry_date",
 	}
 
+	// We strip offset and limit from the DB query so we can inject Retained Earnings dynamically and page accurately in Go memory
+	dbFilter := f
+	pageOffset := 0
+	pageLimit := 0
+	if f.Offset != nil {
+		pageOffset = *f.Offset
+		dbFilter.Offset = nil
+	}
+	if f.Limit != nil {
+		pageLimit = *f.Limit
+		dbFilter.Limit = nil
+	}
+
 	base := `
     SELECT
         MAX(v.coa_id::text)::uuid                                                      AS coa_id,
@@ -603,7 +616,7 @@ func (r *Repository) ListCoaEntries(ctx context.Context, f common.Filter, actorI
     WHERE v.form_field_id IS NOT NULL` + permissionClause
 
 	searchCols := []string{"v.account_name", "v.account_code"}
-	q, qArgs := common.BuildQuery(base, f, allowedColumns, searchCols, false)
+	q, qArgs := common.BuildQuery(base, dbFilter, allowedColumns, searchCols, false)
 
 	groupByClause := ` GROUP BY v.account_name`
 	args := []any{actorID, actorID}
@@ -729,6 +742,19 @@ func (r *Repository) ListCoaEntries(ctx context.Context, f common.Filter, actorI
 				})
 			}
 		}
+	}
+
+	// Apply manual slice-based pagination to exact offset and limit
+	if pageLimit > 0 {
+		start := pageOffset
+		if start > len(result) {
+			start = len(result)
+		}
+		end := start + pageLimit
+		if end > len(result) {
+			end = len(result)
+		}
+		result = result[start:end]
 	}
 
 	return result, nil
@@ -878,6 +904,18 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 		"created_at":      "v.entry_date",
 	}
 
+	dbFilter := f
+	pageOffset := 0
+	pageLimit := 0
+	if f.Offset != nil {
+		pageOffset = *f.Offset
+		dbFilter.Offset = nil
+	}
+	if f.Limit != nil {
+		pageLimit = *f.Limit
+		dbFilter.Limit = nil
+	}
+
 	base := `
          SELECT
             MD5(COALESCE(v.entry_id::text, '') || COALESCE(v.coa_id::text, '') || COALESCE(fev.id::text, ''))::uuid AS id,
@@ -928,18 +966,18 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
         )
         WHERE v.account_name = ? AND v.form_field_id IS NOT NULL` + permissionClause
 
-	if f.SortBy == nil || *f.SortBy == "" {
+	if dbFilter.SortBy == nil || *dbFilter.SortBy == "" {
 		defaultSort := "v.entry_date"
-		f.SortBy = &defaultSort
+		dbFilter.SortBy = &defaultSort
 		defaultOrder := "DESC, fev.id ASC"
-		f.OrderBy = &defaultOrder
+		dbFilter.OrderBy = &defaultOrder
 	} else {
-		extendedOrder := *f.OrderBy + ", fev.id ASC"
-		f.OrderBy = &extendedOrder
+		extendedOrder := *dbFilter.OrderBy + ", fev.id ASC"
+		dbFilter.OrderBy = &extendedOrder
 	}
 
 	searchCols := []string{"ff.label", "v.account_name", "f.name", "c.name"}
-	q, qArgs := common.BuildQuery(base, f, allowedColumns, searchCols, false)
+	q, qArgs := common.BuildQuery(base, dbFilter, allowedColumns, searchCols, false)
 	args := []any{coaName, actorID, actorID}
 	args = append(args, qArgs...)
 	q = r.db.Rebind(q)
@@ -1110,6 +1148,19 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 				CreatedAt:       time.Now().Format("2006-01-02 15:04:05"),
 			})
 		}
+	}
+
+	// Apply manual slice-based pagination to exact offset and limit
+	if pageLimit > 0 {
+		start := pageOffset
+		if start > len(result) {
+			start = len(result)
+		}
+		end := start + pageLimit
+		if end > len(result) {
+			end = len(result)
+		}
+		result = result[start:end]
 	}
 
 	return result, nil
