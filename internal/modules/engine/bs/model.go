@@ -52,3 +52,9 @@ func (r *BSRow) ToRs() RsAccount {
 type ExportBalanceSheetResponse struct {
 	Result interface{}
 }
+
+type RsBalanceSheetGst struct {
+	CoaID           string  `json:"coa_id"`
+	TotalGstPayable float64 `json:"total_gst_payable"`
+	AccountType     string  `json:"account_type"` // "CURRENT_LIABILITY" or "CURRENT_ASSET"
+}

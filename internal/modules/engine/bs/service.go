@@ -21,6 +21,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
 	"github.com/iamarpitzala/acareca/internal/modules/notification"
+	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/iamarpitzala/acareca/internal/shared/export"
 	bsexport "github.com/iamarpitzala/acareca/internal/shared/export/bs"
 	sharednotification "github.com/iamarpitzala/acareca/internal/shared/notification"
@@ -196,28 +197,16 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 	for _, v := range assetMap {
 		assets = append(assets, v)
 	}
-	// Sort assets by account code to ensure consistent ordering
-	sort.Slice(assets, func(i, j int) bool {
-		return assets[i].Code < assets[j].Code
-	})
 
 	liabilities := []RsAccount{}
 	for _, v := range liabMap {
 		liabilities = append(liabilities, v)
 	}
-	// Sort liabilities by account code to ensure consistent ordering
-	sort.Slice(liabilities, func(i, j int) bool {
-		return liabilities[i].Code < liabilities[j].Code
-	})
 
 	equitySect := []RsAccount{}
 	for _, v := range otherEquityMap {
 		equitySect = append(equitySect, v)
 	}
-	// Sort equity by account code to ensure consistent ordering
-	sort.Slice(equitySect, func(i, j int) bool {
-		return equitySect[i].Code < equitySect[j].Code
-	})
 
 	addEquityItem := func(code int16, name string, balance float64) {
 		if balance == 0 {
@@ -248,7 +237,91 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 	addEquityItem(900, "Owner A Drawings", -totalOwnerEquity.Drawings)
 	addEquityItem(960, "Retained Earnings", totalOwnerEquity.RetainedEarnings)
 
+	// ==========================================
+	// Dynamic GST Amount Injection
+	// ==========================================
+	var netGstPayable float64
+	var commonFilter common.Filter
+
+	for _, pID := range targetPracIDs {
+		gstRes, gstErr := s.repo.GetBalanceSheetGst(ctx, commonFilter, endDate, pID, role)
+		if gstErr != nil {
+			log.Printf("[WARN] Failed to fetch GST for practitioner %s: %v", pID, gstErr)
+			continue
+		}
+		if gstRes != nil {
+			if gstRes.AccountType == "CURRENT_LIABILITY" {
+				netGstPayable += gstRes.TotalGstPayable
+			} else {
+				netGstPayable -= gstRes.TotalGstPayable
+			}
+		}
+	}
+
+	if netGstPayable > 0 {
+		// Net Payable -> Current Liability
+		found := false
+		for i := range liabilities {
+			if liabilities[i].Code == 820 || strings.EqualFold(liabilities[i].Name, "GST") {
+				liabilities[i].Balance += netGstPayable
+				found = true
+				break
+			}
+		}
+		if !found {
+			liabilities = append(liabilities, RsAccount{
+				CoaId:   uuid.Nil,
+				Code:    820,
+				Name:    "GST Payable",
+				Balance: netGstPayable,
+			})
+		}
+		totalLiabilities += netGstPayable
+
+	} else if netGstPayable < 0 {
+		// Net Refund -> Current Asset
+		absGst := math.Abs(netGstPayable)
+		found := false
+		for i := range assets {
+			if assets[i].Code == 820 || strings.EqualFold(assets[i].Name, "GST Refund Receivable") {
+				assets[i].Balance += absGst
+				found = true
+				break
+			}
+		}
+		if !found {
+			assets = append(assets, RsAccount{
+				CoaId:   uuid.Nil,
+				Code:    820,
+				Name:    "GST Refund Receivable",
+				Balance: absGst,
+			})
+		}
+		totalAssets += absGst
+	}
+
+	// Clean precision on all asset/liability items
+	for i := range assets {
+		assets[i].Balance = math.Round(assets[i].Balance*100) / 100
+	}
+	for i := range liabilities {
+		liabilities[i].Balance = math.Round(liabilities[i].Balance*100) / 100
+	}
+
+	// Sort lists by account code to maintain consistent ordering
+	sort.Slice(assets, func(i, j int) bool {
+		return assets[i].Code < assets[j].Code
+	})
+	sort.Slice(liabilities, func(i, j int) bool {
+		return liabilities[i].Code < liabilities[j].Code
+	})
+	sort.Slice(equitySect, func(i, j int) bool {
+		return equitySect[i].Code < equitySect[j].Code
+	})
+
 	totalEquity := totalOwnerEquity.TotalEquity + totalOtherEquity
+	totalAssets = math.Round(totalAssets*100) / 100
+	totalLiabilities = math.Round(totalLiabilities*100) / 100
 	netAssets := totalLiabilities + totalEquity
 
 	displayEnd := formatDateForDisplay(endDate)
@@ -558,4 +631,74 @@ func (s *service) notifyReportExport(ctx context.Context, entityID uuid.UUID, ac
 		Body:       fmt.Sprintf("%s %s by %s", reportName, strings.ToLower(action), senderName),
 		ExtraData:  map[string]interface{}{"report_name": reportName},
 	})
+}
+
+func (s *service) InjectGstIntoBalanceSheet(ctx context.Context, bsReport *RsBalanceSheet, f common.Filter, endDate string, actorID uuid.UUID, role string) error {
+	if bsReport == nil {
+		return errors.New("balance sheet report is nil")
+	}
+
+	gstSummary, err := s.repo.GetBalanceSheetGst(ctx, f, endDate, actorID, role)
+	if err != nil {
+		return fmt.Errorf("failed to calculate gst: %w", err)
+	}
+
+	if gstSummary.TotalGstPayable == 0 {
+		return nil
+	}
+
+	if gstSummary.AccountType == "CURRENT_LIABILITY" {
+		found := false
+		for i := range bsReport.Liabilities {
+			if bsReport.Liabilities[i].Code == 820 || strings.EqualFold(bsReport.Liabilities[i].Name, "GST") {
+				bsReport.Liabilities[i].Balance += gstSummary.TotalGstPayable
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			bsReport.Liabilities = append(bsReport.Liabilities, RsAccount{
+				CoaId:   uuid.Nil,
+				Code:    820,
+				Name:    "GST Payable",
+				Balance: gstSummary.TotalGstPayable,
+			})
+		}
+		bsReport.TotalLiabilities += gstSummary.TotalGstPayable
+
+	} else {
+		found := false
+		for i := range bsReport.Assets {
+			if bsReport.Assets[i].Code == 820 || strings.EqualFold(bsReport.Assets[i].Name, "GST Refund Receivable") {
+				bsReport.Assets[i].Balance += gstSummary.TotalGstPayable
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			bsReport.Assets = append(bsReport.Assets, RsAccount{
+				CoaId:   uuid.Nil,
+				Code:    820,
+				Name:    "GST Refund Receivable",
+				Balance: gstSummary.TotalGstPayable,
+			})
+		}
+		bsReport.TotalAssets += gstSummary.TotalGstPayable
+	}
+
+	// Clean up floating point precision
+	for i := range bsReport.Assets {
+		bsReport.Assets[i].Balance = math.Round(bsReport.Assets[i].Balance*100) / 100
+	}
+	for i := range bsReport.Liabilities {
+		bsReport.Liabilities[i].Balance = math.Round(bsReport.Liabilities[i].Balance*100) / 100
+	}
+
+	bsReport.TotalAssets = math.Round(bsReport.TotalAssets*100) / 100
+	bsReport.TotalLiabilities = math.Round(bsReport.TotalLiabilities*100) / 100
+	bsReport.NetAssets = math.Round((bsReport.TotalAssets-bsReport.TotalLiabilities)*100) / 100
+
+	return nil
 }
