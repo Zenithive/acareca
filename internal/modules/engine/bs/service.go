@@ -109,33 +109,44 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 		return nil, fmt.Errorf("unsupported role: %s", role)
 	}
 
+	// Fetch financial years
+	var fyStartDate, activeFyEndDate string
+	fys, err := s.fySvc.GetFinancialYears(ctx)
+	if err == nil && fys != nil {
+		for _, item := range fys {
+			if *item.IsActive {
+				if parsedStart, parseErr := time.Parse(time.RFC3339, item.StartDate.String()); parseErr == nil {
+					fyStartDate = parsedStart.Format("2006-01-02")
+				} else if len(item.StartDate.String()) >= 10 {
+					fyStartDate = item.StartDate.String()[:10]
+				}
+
+				if parsedEnd, parseErr := time.Parse(time.RFC3339, item.EndDate.String()); parseErr == nil {
+					activeFyEndDate = parsedEnd.Format("2006-01-02")
+				} else if len(item.EndDate.String()) >= 10 {
+					activeFyEndDate = item.EndDate.String()[:10]
+				}
+				break
+			}
+		}
+	}
+
+	// Determine request end date
 	endDate := ""
 	if f.EndDate != nil && *f.EndDate != "" {
 		endDate = *f.EndDate
+	} else if activeFyEndDate != "" {
+		endDate = activeFyEndDate
 	} else {
-		fys, err := s.fySvc.GetFinancialYears(ctx)
-		if err == nil && fys != nil {
-			for _, item := range fys {
-				if *item.IsActive {
-					if parsedTime, parseErr := time.Parse(time.RFC3339, item.EndDate.String()); parseErr == nil {
-						endDate = parsedTime.Format("2006-01-02")
-						break
-					} else {
-						if len(item.EndDate.String()) >= 10 {
-							endDate = item.EndDate.String()[:10]
-							break
-						}
-					}
-				}
-			}
-		}
-
-		// Fallback to todays date if nothing matched
-		if endDate == "" {
-			endDate = time.Now().Format("2006-01-02")
-		}
+		// Fallback to today's date
+		endDate = time.Now().Format("2006-01-02")
 	}
 	f.EndDate = &endDate
+
+	// Fallback to start of current calendar year if active FY start date is absent
+	if fyStartDate == "" {
+		fyStartDate = fmt.Sprintf("%d-01-01", time.Now().Year())
+	}
 
 	rows, err := s.repo.GetBalanceSheet(ctx, targetPracIDs, f)
 	if err != nil {
@@ -144,7 +155,7 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 
 	var totalOwnerEquity equity.OwnerEquityCalculation
 	for _, pID := range targetPracIDs {
-		pracEquity, err := s.equitySvc.CalculateOwnerEquity(ctx, pID, nil, "", endDate)
+		pracEquity, err := s.equitySvc.CalculateOwnerEquity(ctx, pID, nil, fyStartDate, endDate)
 		if err != nil {
 			return nil, fmt.Errorf("calculate owner equity: %w", err)
 		}
@@ -262,7 +273,7 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 		// Net Payable -> Current Liability
 		found := false
 		for i := range liabilities {
-			if liabilities[i].Code == 820 || strings.EqualFold(liabilities[i].Name, "GST") {
+			if liabilities[i].Code == 0 || strings.EqualFold(liabilities[i].Name, "GST Payable") {
 				liabilities[i].Balance += netGstPayable
 				found = true
 				break
@@ -271,7 +282,7 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 		if !found {
 			liabilities = append(liabilities, RsAccount{
 				CoaId:   uuid.Nil,
-				Code:    820,
+				Code:    0,
 				Name:    "GST Payable",
 				Balance: netGstPayable,
 			})
@@ -283,7 +294,7 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 		absGst := math.Abs(netGstPayable)
 		found := false
 		for i := range assets {
-			if assets[i].Code == 820 || strings.EqualFold(assets[i].Name, "GST Refund Receivable") {
+			if assets[i].Code == 0 || strings.EqualFold(assets[i].Name, "GST Refund Receivable") {
 				assets[i].Balance += absGst
 				found = true
 				break
@@ -292,7 +303,7 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 		if !found {
 			assets = append(assets, RsAccount{
 				CoaId:   uuid.Nil,
-				Code:    820,
+				Code:    0,
 				Name:    "GST Refund Receivable",
 				Balance: absGst,
 			})
