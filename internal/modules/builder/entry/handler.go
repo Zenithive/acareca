@@ -347,20 +347,23 @@ func (h *handler) ListCoaEntries(c *gin.Context) {
 	}
 
 	if role == util.RoleAccountant {
-		if filter.PractitionerID != nil {
-			pracIDStr := c.Query("practitioner_id")
-			// Handle JSON-encoded array format: ["uuid-value"]
+		// Parse practitioner_id from query string manually — BindAndValidate
+		// doesn't hydrate PractitionerID as a *uuid.UUID from the raw string.
+		if pracIDStr := c.Query("practitioner_id"); pracIDStr != "" {
 			cleanedStr := strings.Trim(pracIDStr, "[]\" ")
 			pID, err := uuid.Parse(cleanedStr)
 			if err != nil {
-				response.Error(c, http.StatusBadRequest, err)
+				response.Error(c, http.StatusBadRequest, fmt.Errorf("invalid practitioner_id: %w", err))
 				return
 			}
 			filter.PractitionerID = &pID
 		}
+		// For accountants, actorID stays as the accountant's own UUID —
+		// the repo permission clause uses it to look up linked practitioners.
 	} else {
 		filter.PractitionerID = actorID
 	}
+
 	if filter.ClinicID != nil {
 		cleanID := strings.Trim(*filter.ClinicID, "[]\" ")
 		filter.ClinicID = &cleanID
@@ -414,6 +417,27 @@ func (h *handler) ListCoaEntryDetails(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
+
+	// Same practitioner_id handling as ListCoaEntries
+	if role == util.RoleAccountant {
+		if pracIDStr := c.Query("practitioner_id"); pracIDStr != "" {
+			cleanedStr := strings.Trim(pracIDStr, "[]\" ")
+			pID, err := uuid.Parse(cleanedStr)
+			if err != nil {
+				response.Error(c, http.StatusBadRequest, fmt.Errorf("invalid practitioner_id: %w", err))
+				return
+			}
+			filter.PractitionerID = &pID
+		}
+	} else {
+		filter.PractitionerID = actorID
+	}
+
+	if filter.ClinicID != nil {
+		cleanID := strings.Trim(*filter.ClinicID, "[]\" ")
+		filter.ClinicID = &cleanID
+	}
+
 	filter.Role = role
 
 	result, err := h.svc.ListCoaEntryDetails(c.Request.Context(), coaID, filter, *actorID, role)
