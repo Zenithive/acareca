@@ -220,22 +220,30 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, role
 	var targetPracIDs []uuid.UUID
 
 	if isAccountant {
-		commonFilter := f.MapToFilter()
-		clinics, err := s.clinicRepo.ListClinicByAccountant(ctx, actorID, commonFilter)
-		if err != nil {
-			return nil, fmt.Errorf("failed to fetch accessible practitioners: %w", err)
-		}
-
-		for _, clinic := range clinics {
-			practitionerMap[clinic.PractitionerID] = true
-		}
-
-		for pID := range practitionerMap {
-			targetPracIDs = append(targetPracIDs, pID)
-		}
-
-		if len(targetPracIDs) == 0 {
-			return &RsBASPreparation{Columns: []BASColumn{}}, nil
+		// If a specific practitioner is requested, use only that one
+		if f.PractitionerID != nil && *f.PractitionerID != "" {
+			pID, err := uuid.Parse(*f.PractitionerID)
+			if err != nil {
+				return nil, fmt.Errorf("invalid practitioner_id: %w", err)
+			}
+			targetPracIDs = []uuid.UUID{pID}
+			practitionerMap[pID] = true
+		} else {
+			// No filter — aggregate all linked practitioners
+			commonFilter := f.MapToFilter()
+			clinics, err := s.clinicRepo.ListClinicByAccountant(ctx, actorID, commonFilter)
+			if err != nil {
+				return nil, fmt.Errorf("failed to fetch accessible practitioners: %w", err)
+			}
+			for _, clinic := range clinics {
+				practitionerMap[clinic.PractitionerID] = true
+			}
+			for pID := range practitionerMap {
+				targetPracIDs = append(targetPracIDs, pID)
+			}
+			if len(targetPracIDs) == 0 {
+				return &RsBASPreparation{Columns: []BASColumn{}}, nil
+			}
 		}
 	} else {
 		targetPracIDs = []uuid.UUID{actorID}
