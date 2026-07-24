@@ -75,6 +75,7 @@ type BASFilter struct {
 	QuarterIDs       *string `form:"quarter_ids"`
 	ParsedQuarterIDs []uuid.UUID
 	ParsedClinicIDs  []uuid.UUID
+	PractitionerID   *string `form:"practitioner_id"`
 }
 
 func (f *BASFilter) MapToFilter() common.Filter {
@@ -115,6 +116,9 @@ func (f *BASFilter) MapToFilter() common.Filter {
 	}
 	if f.FinancialYearID != nil {
 		filters["financial_year_id"] = *f.FinancialYearID
+	}
+	if f.PractitionerID != nil {
+		filters["practitioner_id"] = *f.PractitionerID
 	}
 
 	return common.NewFilter(nil, filters, operators, nil, nil, nil, nil)

@@ -1052,7 +1052,7 @@ func roundEntry(v float64) float64 {
 }
 
 func (s *Service) ListCoaEntries(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string, userID uuid.UUID) (*util.RsList, error) {
-	var userIDStr string = userID.String()
+	var userIDStr = userID.String()
 	parsedActorID := actorID.String()
 
 	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
@@ -1062,9 +1062,7 @@ func (s *Service) ListCoaEntries(ctx context.Context, filter TransactionFilter, 
 		Module:     auditctx.ModuleReport,
 		EntityType: lo.ToPtr(auditctx.EntityTransactions),
 		EntityID:   &parsedActorID,
-		AfterState: map[string]interface{}{
-			"report_type": "Transaction Report",
-		},
+		AfterState: map[string]interface{}{"report_type": "Transaction Report"},
 	})
 
 	f := filter.ToCommonFilter()
@@ -1083,18 +1081,18 @@ func (s *Service) ListCoaEntries(ctx context.Context, filter TransactionFilter, 
 	f.Offset = &dbOffset
 	f.Limit = &pageSize
 
-	items, err := s.repo.ListCoaEntries(ctx, f, actorID, role)
-	if err != nil {
-		return nil, err
-	}
-	total, err := s.repo.CountCoaEntries(ctx, f, actorID, role)
-	if err != nil {
-		return nil, err
+	var filterPracID *uuid.UUID
+	if filter.PractitionerID != nil {
+		filterPracID = filter.PractitionerID
 	}
 
-	// Enrich transactions with retained earnings
-	for i := range items {
-		items[i].TotalRetainedEarnings = items[i].TotalNetAmount
+	items, err := s.repo.ListCoaEntries(ctx, f, actorID, role, filterPracID)
+	if err != nil {
+		return nil, err
+	}
+	total, err := s.repo.CountCoaEntries(ctx, f, actorID, role, filterPracID)
+	if err != nil {
+		return nil, err
 	}
 
 	var rs util.RsList
@@ -1129,21 +1127,18 @@ func (s *Service) ListCoaEntryDetails(ctx context.Context, coaID string, filter 
 	f.Offset = &dbOffset
 	f.Limit = &pageSize
 
-	items, err := s.repo.ListCoaEntryDetails(ctx, coaName, f, actorID, role)
-	if err != nil {
-		return nil, err
-	}
-	total, err := s.repo.CountCoaEntryDetails(ctx, coaName, f, actorID, role)
-	if err != nil {
-		return nil, err
+	var filterPracID *uuid.UUID
+	if filter.PractitionerID != nil {
+		filterPracID = filter.PractitionerID
 	}
 
-	// Enrich transactions with retained earnings
-	for i := range items {
-		if items[i].NetAmount != nil {
-			val := *items[i].NetAmount
-			items[i].RetainedEarnings = &val
-		}
+	items, err := s.repo.ListCoaEntryDetails(ctx, coaName, f, actorID, role, filterPracID)
+	if err != nil {
+		return nil, err
+	}
+	total, err := s.repo.CountCoaEntryDetails(ctx, coaName, f, actorID, role, filterPracID)
+	if err != nil {
+		return nil, err
 	}
 
 	var rs util.RsList
@@ -1161,8 +1156,13 @@ func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilt
 		selectedColumns = []string{"date", "supplier_name", "description", "clinic", "expenses", "net_amount", "gst_amount", "gross_amount", "gst_type", "business_percentage", "note"}
 	}
 
+	var filterPracID *uuid.UUID
+	if f.PractitionerID != nil {
+		filterPracID = f.PractitionerID
+	}
+
 	err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
-		groups, err := s.repo.ListCoaEntries(ctx, f.ToCommonFilter(), actorID, role)
+		groups, err := s.repo.ListCoaEntries(ctx, f.ToCommonFilter(), actorID, role, filterPracID)
 		if err != nil {
 			return err
 		}
@@ -1171,7 +1171,7 @@ func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilt
 			if g == nil {
 				continue
 			}
-			details, err := s.repo.ListCoaEntryDetails(ctx, g.CoaName, f.ToCommonFilter(), actorID, role)
+			details, err := s.repo.ListCoaEntryDetails(ctx, g.CoaName, f.ToCommonFilter(), actorID, role, filterPracID)
 			if err != nil {
 				continue
 			}
@@ -1377,8 +1377,13 @@ func (s *Service) validateLockDate(ctx context.Context, tx *sqlx.Tx, practitione
 func (s *Service) ExportTransactionData(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string) (*RsExportData, error) {
 	f := filter.ToCommonFilter()
 
+	var filterPracID *uuid.UUID
+	if filter.PractitionerID != nil {
+		filterPracID = filter.PractitionerID
+	}
+
 	f.Limit = lo.ToPtr(1000)
-	coaSummaries, err := s.repo.ListCoaEntries(ctx, f, actorID, role)
+	coaSummaries, err := s.repo.ListCoaEntries(ctx, f, actorID, role, filterPracID)
 	if err != nil {
 		return nil, err
 	}
@@ -1386,7 +1391,7 @@ func (s *Service) ExportTransactionData(ctx context.Context, filter TransactionF
 	exportItems := make([]*RsCoaExportItem, 0, len(coaSummaries))
 
 	for _, summary := range coaSummaries {
-		details, err := s.repo.ListCoaEntryDetails(ctx, summary.CoaName, f, actorID, role)
+		details, err := s.repo.ListCoaEntryDetails(ctx, summary.CoaName, f, actorID, role, filterPracID)
 		if err != nil {
 			log.Printf("Error fetching details for COA %s: %v", summary.CoaName, err)
 			continue

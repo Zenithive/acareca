@@ -32,10 +32,10 @@ type IRepository interface {
 	ListTransactions(ctx context.Context, f common.Filter, actorID uuid.UUID, role string) ([]*RsTransactionRow, error)
 	CountTransactions(ctx context.Context, f common.Filter, actorID uuid.UUID, role string) (int, error)
 	// COA-grouped endpoints
-	ListCoaEntries(ctx context.Context, f common.Filter, actorID uuid.UUID, role string) ([]*RsCoaEntry, error)
-	CountCoaEntries(ctx context.Context, f common.Filter, actorID uuid.UUID, role string) (int, error)
-	ListCoaEntryDetails(ctx context.Context, coaName string, f common.Filter, actorID uuid.UUID, role string) ([]*RsCoaEntryDetail, error)
-	CountCoaEntryDetails(ctx context.Context, coaName string, f common.Filter, actorID uuid.UUID, role string) (int, error)
+	ListCoaEntries(ctx context.Context, f common.Filter, actorID uuid.UUID, role string, filterPracID *uuid.UUID) ([]*RsCoaEntry, error)
+	CountCoaEntries(ctx context.Context, f common.Filter, actorID uuid.UUID, role string, filterPracID *uuid.UUID) (int, error)
+	ListCoaEntryDetails(ctx context.Context, coaName string, f common.Filter, actorID uuid.UUID, role string, filterPracID *uuid.UUID) ([]*RsCoaEntryDetail, error)
+	CountCoaEntryDetails(ctx context.Context, coaName string, f common.Filter, actorID uuid.UUID, role string, filterPracID *uuid.UUID) (int, error)
 	GetSummedValuesByFieldID(ctx context.Context, fieldID uuid.UUID) (*RsFieldSummary, error)
 	GetCoaNameByID(ctx context.Context, id uuid.UUID) (string, error)
 	// Document linking
@@ -546,20 +546,33 @@ func (r *Repository) GetSummedValuesByFieldID(ctx context.Context, fieldID uuid.
 	return &summary, nil
 }
 
-func (r *Repository) ListCoaEntries(ctx context.Context, f common.Filter, actorID uuid.UUID, role string) ([]*RsCoaEntry, error) {
+func (r *Repository) ListCoaEntries(ctx context.Context, f common.Filter, actorID uuid.UUID, role string, filterPracID *uuid.UUID) ([]*RsCoaEntry, error) {
 	var permissionClause string
+	var args []any
 
 	if strings.EqualFold(role, util.RoleAccountant) {
-		permissionClause = ` AND (
-            v.practitioner_id IN (
-                SELECT practitioner_id FROM tbl_invitation
-                WHERE accountant_id = ? AND status = 'COMPLETED'
-            )
-            OR (v.clinic_id = '00000000-0000-0000-0000-000000000000' AND v.practitioner_id IN (
-                SELECT practitioner_id FROM tbl_invitation
-                WHERE accountant_id = ? AND status = 'COMPLETED'
-            ))
-        )`
+		if filterPracID != nil {
+			permissionClause = ` AND (
+                v.practitioner_id = ?
+                AND v.practitioner_id IN (
+                    SELECT practitioner_id FROM tbl_invitation
+                    WHERE accountant_id = ? AND status = 'COMPLETED'
+                )
+            )`
+			args = []any{*filterPracID, actorID}
+		} else {
+			permissionClause = ` AND (
+                v.practitioner_id IN (
+                    SELECT practitioner_id FROM tbl_invitation
+                    WHERE accountant_id = ? AND status = 'COMPLETED'
+                )
+                OR (v.clinic_id = '00000000-0000-0000-0000-000000000000' AND v.practitioner_id IN (
+                    SELECT practitioner_id FROM tbl_invitation
+                    WHERE accountant_id = ? AND status = 'COMPLETED'
+                ))
+            )`
+			args = []any{actorID, actorID}
+		}
 	} else {
 		permissionClause = ` AND (
             v.clinic_id IN (
@@ -568,6 +581,7 @@ func (r *Repository) ListCoaEntries(ctx context.Context, f common.Filter, actorI
             )
             OR (v.clinic_id = '00000000-0000-0000-0000-000000000000' AND v.practitioner_id = ?)
         )`
+		args = []any{actorID, actorID}
 	}
 
 	allowedColumns := map[string]string{
@@ -605,21 +619,20 @@ func (r *Repository) ListCoaEntries(ctx context.Context, f common.Filter, actorI
     FROM vw_double_entry_line_items v
     LEFT JOIN tbl_chart_of_accounts coa ON coa.id = v.coa_id
     INNER JOIN tbl_form_entry_value fev
-		ON fev.entry_id = v.entry_id
-			AND fev.deleted_at IS NULL
-			AND fev.updated_at IS NULL
-			AND (
-				(v.form_field_id IS NOT NULL AND fev.form_field_id = v.form_field_id)
-				OR
-				(v.form_field_id IS NULL AND fev.form_field_id IS NULL AND fev.coa_id = v.coa_id)
-			)
+        ON fev.entry_id = v.entry_id
+            AND fev.deleted_at IS NULL
+            AND fev.updated_at IS NULL
+            AND (
+                (v.form_field_id IS NOT NULL AND fev.form_field_id = v.form_field_id)
+                OR
+                (v.form_field_id IS NULL AND fev.form_field_id IS NULL AND fev.coa_id = v.coa_id)
+            )
     WHERE v.form_field_id IS NOT NULL` + permissionClause
 
 	searchCols := []string{"v.account_name", "v.account_code"}
 	q, qArgs := common.BuildQuery(base, dbFilter, allowedColumns, searchCols, false)
 
 	groupByClause := ` GROUP BY v.account_name`
-	args := []any{actorID, actorID}
 	args = append(args, qArgs...)
 
 	if strings.Contains(q, "ORDER BY") {
@@ -661,63 +674,27 @@ func (r *Repository) ListCoaEntries(ctx context.Context, f common.Filter, actorI
 
 	var targetPracIDs []uuid.UUID
 	if strings.EqualFold(role, util.RoleAccountant) {
-		err := r.db.SelectContext(ctx, &targetPracIDs, `SELECT practitioner_id FROM tbl_invitation WHERE accountant_id = ? AND status = 'COMPLETED'`, actorID)
-		if err != nil {
-			return result, nil
+		if filterPracID != nil {
+			targetPracIDs = []uuid.UUID{*filterPracID}
+		} else {
+			err := r.db.SelectContext(ctx, &targetPracIDs,
+				`SELECT practitioner_id FROM tbl_invitation WHERE accountant_id = ? AND status = 'COMPLETED'`,
+				actorID)
+			if err != nil {
+				// Non-fatal: skip RE rather than returning empty result.
+				return applyPagination(result, pageOffset, pageLimit), nil
+			}
 		}
 	} else {
 		targetPracIDs = []uuid.UUID{actorID}
 	}
 
 	if len(targetPracIDs) > 0 {
-		plFilter := &pl.PLReportFilter{}
-
-		// Extract filters from Where conditions
-		for _, cond := range f.Where {
-			switch cond.Field {
-			case "start_date":
-				if dateStr, ok := cond.Value.(string); ok {
-					plFilter.DateFrom = &dateStr
-				}
-			case "end_date":
-				if dateStr, ok := cond.Value.(string); ok {
-					plFilter.DateUntil = &dateStr
-				}
-			case "clinic_id":
-				if clinicUUID, ok := cond.Value.(uuid.UUID); ok {
-					clinicStr := clinicUUID.String()
-					plFilter.ClinicID = &clinicStr
-				}
-			case "form_id":
-				if formUUID, ok := cond.Value.(uuid.UUID); ok {
-					formStr := formUUID.String()
-					plFilter.FormID = &formStr
-				}
-			case "tax_type_id":
-				if TaxTypeUUID, ok := cond.Value.(uuid.UUID); ok {
-					TaxTypeStr := TaxTypeUUID.String()
-					plFilter.TaxTypeID = &TaxTypeStr
-				}
-			}
-		}
+		plFilter := buildPLFilter(f)
 
 		summary, err := r.plRepo.GetPLSummary(ctx, targetPracIDs, plFilter)
 		if err == nil && summary != nil && summary.NetProfitNet != 0 {
-			var reCOA struct {
-				ID   uuid.UUID `db:"id"`
-				Name string    `db:"name"`
-			}
-			err = r.db.GetContext(ctx, &reCOA, `
-				SELECT v.id, COALESCE(v.name, tpl.name) AS name 
-				FROM tbl_chart_of_accounts v
-				LEFT JOIN tbl_chart_of_accounts_template tpl ON tpl.id = v.template_id
-				WHERE (COALESCE(v.code, tpl.code) = 960 OR LOWER(COALESCE(v.name, tpl.name)) = 'retained earnings')
-				  AND v.deleted_at IS NULL LIMIT 1`)
-
-			if err != nil {
-				reCOA.ID = uuid.MustParse("00000000-0000-0000-0000-000000000960")
-				reCOA.Name = "Retained Earnings"
-			}
+			reCOA := r.getOrDefaultRetainedEarningsCOA(ctx)
 
 			found := false
 			for _, entry := range result {
@@ -744,36 +721,36 @@ func (r *Repository) ListCoaEntries(ctx context.Context, f common.Filter, actorI
 		}
 	}
 
-	// Apply manual slice-based pagination to exact offset and limit
-	if pageLimit > 0 {
-		start := pageOffset
-		if start > len(result) {
-			start = len(result)
-		}
-		end := start + pageLimit
-		if end > len(result) {
-			end = len(result)
-		}
-		result = result[start:end]
-	}
-
-	return result, nil
+	return applyPagination(result, pageOffset, pageLimit), nil
 }
 
-func (r *Repository) CountCoaEntries(ctx context.Context, f common.Filter, actorID uuid.UUID, role string) (int, error) {
+func (r *Repository) CountCoaEntries(ctx context.Context, f common.Filter, actorID uuid.UUID, role string, filterPracID *uuid.UUID) (int, error) {
 	var permissionClause string
+	var args []any
 
 	if strings.EqualFold(role, util.RoleAccountant) {
-		permissionClause = ` AND (
-            v.practitioner_id IN (
-                SELECT practitioner_id FROM tbl_invitation
-                WHERE accountant_id = ? AND status = 'COMPLETED'
-            )
-            OR (v.clinic_id = '00000000-0000-0000-0000-000000000000' AND v.practitioner_id IN (
-                SELECT practitioner_id FROM tbl_invitation
-                WHERE accountant_id = ? AND status = 'COMPLETED'
-            ))
-        )`
+		if filterPracID != nil {
+			permissionClause = ` AND (
+                v.practitioner_id = ?
+                AND v.practitioner_id IN (
+                    SELECT practitioner_id FROM tbl_invitation
+                    WHERE accountant_id = ? AND status = 'COMPLETED'
+                )
+            )`
+			args = []any{*filterPracID, actorID}
+		} else {
+			permissionClause = ` AND (
+                v.practitioner_id IN (
+                    SELECT practitioner_id FROM tbl_invitation
+                    WHERE accountant_id = ? AND status = 'COMPLETED'
+                )
+                OR (v.clinic_id = '00000000-0000-0000-0000-000000000000' AND v.practitioner_id IN (
+                    SELECT practitioner_id FROM tbl_invitation
+                    WHERE accountant_id = ? AND status = 'COMPLETED'
+                ))
+            )`
+			args = []any{actorID, actorID}
+		}
 	} else {
 		permissionClause = ` AND (
             v.clinic_id IN (
@@ -782,6 +759,7 @@ func (r *Repository) CountCoaEntries(ctx context.Context, f common.Filter, actor
             )
             OR (v.clinic_id = '00000000-0000-0000-0000-000000000000' AND v.practitioner_id = ?)
         )`
+		args = []any{actorID, actorID}
 	}
 
 	allowedColumns := map[string]string{
@@ -796,14 +774,14 @@ func (r *Repository) CountCoaEntries(ctx context.Context, f common.Filter, actor
 
 	base := ` FROM vw_double_entry_line_items v
     INNER JOIN tbl_form_entry_value fev
-		ON fev.entry_id = v.entry_id
-			AND fev.deleted_at IS NULL
-			AND fev.updated_at IS NULL
-			AND (
-			(v.form_field_id IS NOT NULL AND fev.form_field_id = v.form_field_id)
-			OR
-			(v.form_field_id IS NULL AND fev.form_field_id IS NULL AND fev.coa_id = v.coa_id)
-		)
+        ON fev.entry_id = v.entry_id
+            AND fev.deleted_at IS NULL
+            AND fev.updated_at IS NULL
+            AND (
+            (v.form_field_id IS NOT NULL AND fev.form_field_id = v.form_field_id)
+            OR
+            (v.form_field_id IS NULL AND fev.form_field_id IS NULL AND fev.coa_id = v.coa_id)
+        )
     WHERE v.form_field_id IS NOT NULL` + permissionClause
 
 	searchCols := []string{"v.account_name", "v.account_code"}
@@ -813,7 +791,6 @@ func (r *Repository) CountCoaEntries(ctx context.Context, f common.Filter, actor
 		q = strings.ReplaceAll(q, "COUNT(*)", "COUNT(DISTINCT v.account_name)")
 	}
 
-	args := []any{actorID, actorID}
 	args = append(args, qArgs...)
 	q = r.db.Rebind(q)
 
@@ -824,43 +801,19 @@ func (r *Repository) CountCoaEntries(ctx context.Context, f common.Filter, actor
 
 	var targetPracIDs []uuid.UUID
 	if strings.EqualFold(role, util.RoleAccountant) {
-		_ = r.db.SelectContext(ctx, &targetPracIDs, `SELECT practitioner_id FROM tbl_invitation WHERE accountant_id = ? AND status = 'COMPLETED'`, actorID)
+		if filterPracID != nil {
+			targetPracIDs = []uuid.UUID{*filterPracID}
+		} else {
+			_ = r.db.SelectContext(ctx, &targetPracIDs,
+				`SELECT practitioner_id FROM tbl_invitation WHERE accountant_id = ? AND status = 'COMPLETED'`,
+				actorID)
+		}
 	} else {
 		targetPracIDs = []uuid.UUID{actorID}
 	}
 
 	if len(targetPracIDs) > 0 {
-		plFilter := &pl.PLReportFilter{}
-
-		// Extract filters from Where conditions
-		for _, cond := range f.Where {
-			switch cond.Field {
-			case "start_date":
-				if dateStr, ok := cond.Value.(string); ok {
-					plFilter.DateFrom = &dateStr
-				}
-			case "end_date":
-				if dateStr, ok := cond.Value.(string); ok {
-					plFilter.DateUntil = &dateStr
-				}
-			case "clinic_id":
-				if clinicUUID, ok := cond.Value.(uuid.UUID); ok {
-					clinicStr := clinicUUID.String()
-					plFilter.ClinicID = &clinicStr
-				}
-			case "form_id":
-				if formUUID, ok := cond.Value.(uuid.UUID); ok {
-					formStr := formUUID.String()
-					plFilter.FormID = &formStr
-				}
-			case "tax_type_id":
-				if TaxTypeUUID, ok := cond.Value.(uuid.UUID); ok {
-					TaxTypeStr := TaxTypeUUID.String()
-					plFilter.TaxTypeID = &TaxTypeStr
-				}
-			}
-		}
-
+		plFilter := buildPLFilter(f)
 		summary, err := r.plRepo.GetPLSummary(ctx, targetPracIDs, plFilter)
 		if err == nil && summary != nil && summary.NetProfitNet != 0 {
 			total++
@@ -870,28 +823,42 @@ func (r *Repository) CountCoaEntries(ctx context.Context, f common.Filter, actor
 	return total, nil
 }
 
-func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f common.Filter, actorID uuid.UUID, role string) ([]*RsCoaEntryDetail, error) {
+func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f common.Filter, actorID uuid.UUID, role string, filterPracID *uuid.UUID) ([]*RsCoaEntryDetail, error) {
 	var permissionClause string
+	var args []any
 
 	if strings.EqualFold(role, util.RoleAccountant) {
-		permissionClause = ` AND (
-            v.practitioner_id IN (
-                SELECT practitioner_id FROM tbl_invitation 
-                WHERE accountant_id = ? AND status = 'COMPLETED'
-            )
-            OR (v.clinic_id = '00000000-0000-0000-0000-000000000000' AND v.practitioner_id IN (
-                SELECT practitioner_id FROM tbl_invitation 
-                WHERE accountant_id = ? AND status = 'COMPLETED'
-            ))
-        )`
+		if filterPracID != nil {
+			permissionClause = ` AND (
+                v.practitioner_id = ?
+                AND v.practitioner_id IN (
+                    SELECT practitioner_id FROM tbl_invitation
+                    WHERE accountant_id = ? AND status = 'COMPLETED'
+                )
+            )`
+			args = []any{*filterPracID, actorID}
+		} else {
+			permissionClause = ` AND (
+                v.practitioner_id IN (
+                    SELECT practitioner_id FROM tbl_invitation
+                    WHERE accountant_id = ? AND status = 'COMPLETED'
+                )
+                OR (v.clinic_id = '00000000-0000-0000-0000-000000000000' AND v.practitioner_id IN (
+                    SELECT practitioner_id FROM tbl_invitation
+                    WHERE accountant_id = ? AND status = 'COMPLETED'
+                ))
+            )`
+			args = []any{actorID, actorID}
+		}
 	} else {
 		permissionClause = ` AND (
             v.clinic_id IN (
-                SELECT id FROM tbl_clinic 
+                SELECT id FROM tbl_clinic
                 WHERE practitioner_id = ? AND deleted_at IS NULL
             )
             OR (v.clinic_id = '00000000-0000-0000-0000-000000000000' AND v.practitioner_id = ?)
         )`
+		args = []any{actorID, actorID}
 	}
 
 	allowedColumns := map[string]string{
@@ -917,7 +884,7 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 	}
 
 	base := `
-         SELECT
+        SELECT
             MD5(COALESCE(v.entry_id::text, '') || COALESCE(v.coa_id::text, '') || COALESCE(fev.id::text, ''))::uuid AS id,
             fev.id                                                                                                         AS form_entry_value_id,
             v.entry_id                                                                                                     AS entry_id,
@@ -978,8 +945,10 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 
 	searchCols := []string{"ff.label", "v.account_name", "f.name", "c.name"}
 	q, qArgs := common.BuildQuery(base, dbFilter, allowedColumns, searchCols, false)
-	args := []any{coaName, actorID, actorID}
-	args = append(args, qArgs...)
+
+	finalArgs := []any{coaName}
+	finalArgs = append(finalArgs, args...)
+	finalArgs = append(finalArgs, qArgs...)
 	q = r.db.Rebind(q)
 
 	type detailRow struct {
@@ -1011,7 +980,7 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 	}
 
 	var rows []*detailRow
-	if err := r.db.SelectContext(ctx, &rows, q, args...); err != nil {
+	if err := r.db.SelectContext(ctx, &rows, q, finalArgs...); err != nil {
 		return nil, fmt.Errorf("list coa entry details via views: %w", err)
 	}
 
@@ -1083,111 +1052,90 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 		result = append(result, detail)
 	}
 
+	// Inject Retained Earnings row
 	if strings.EqualFold(coaName, "Retained Earnings") {
 		var targetPracIDs []uuid.UUID
 		if strings.EqualFold(role, util.RoleAccountant) {
-			_ = r.db.SelectContext(ctx, &targetPracIDs, `SELECT practitioner_id FROM tbl_invitation WHERE accountant_id = ? AND status = 'COMPLETED'`, actorID)
+			if filterPracID != nil {
+				targetPracIDs = []uuid.UUID{*filterPracID}
+			} else {
+				_ = r.db.SelectContext(ctx, &targetPracIDs,
+					`SELECT practitioner_id FROM tbl_invitation WHERE accountant_id = ? AND status = 'COMPLETED'`,
+					actorID)
+			}
 		} else {
 			targetPracIDs = []uuid.UUID{actorID}
 		}
 
-		plFilter := &pl.PLReportFilter{}
+		if len(targetPracIDs) > 0 {
+			plFilter := buildPLFilter(f)
+			summary, err := r.plRepo.GetPLSummary(ctx, targetPracIDs, plFilter)
+			if err == nil && summary != nil && summary.NetProfitNet != 0 {
+				netVal := summary.NetProfitNet
+				grossVal := summary.NetProfitNet
+				txType := "CREDIT"
+				if netVal < 0 {
+					txType = "DEBIT"
+					netVal = netVal * -1
+					grossVal = grossVal * -1
+				}
+				zeroGst := 0.0
+				noteStr := "Synced from Profit & Loss"
 
-		// Extract filters from Where conditions
-		for _, cond := range f.Where {
-			switch cond.Field {
-			case "start_date":
-				if dateStr, ok := cond.Value.(string); ok {
-					plFilter.DateFrom = &dateStr
-				}
-			case "end_date":
-				if dateStr, ok := cond.Value.(string); ok {
-					plFilter.DateUntil = &dateStr
-				}
-			case "clinic_id":
-				if clinicUUID, ok := cond.Value.(uuid.UUID); ok {
-					clinicStr := clinicUUID.String()
-					plFilter.ClinicID = &clinicStr
-				}
-			case "form_id":
-				if formUUID, ok := cond.Value.(uuid.UUID); ok {
-					formStr := formUUID.String()
-					plFilter.FormID = &formStr
-				}
-			case "tax_type_id":
-				if TaxTypeUUID, ok := cond.Value.(uuid.UUID); ok {
-					TaxTypeStr := TaxTypeUUID.String()
-					plFilter.TaxTypeID = &TaxTypeStr
-				}
+				result = append(result, &RsCoaEntryDetail{
+					ID:              uuid.New().String(),
+					CoaName:         coaName,
+					FormFieldName:   "Net Profit",
+					TransactionType: txType,
+					NetAmount:       &netVal,
+					GstAmount:       &zeroGst,
+					GrossAmount:     &grossVal,
+					Notes:           &noteStr,
+					CreatedAt:       time.Now().Format("2006-01-02 15:04:05"),
+				})
 			}
-		}
-
-		summary, err := r.plRepo.GetPLSummary(ctx, targetPracIDs, plFilter)
-		if err == nil && summary != nil && summary.NetProfitNet != 0 {
-			netVal := summary.NetProfitNet
-			grossVal := summary.NetProfitNet
-			txType := "CREDIT"
-			if netVal < 0 {
-				txType = "DEBIT"
-				netVal = netVal * -1
-				grossVal = grossVal * -1
-			}
-
-			zeroGst := 0.0
-			noteStr := "Synced from Profit & Loss"
-
-			result = append(result, &RsCoaEntryDetail{
-				ID:              uuid.New().String(),
-				CoaName:         coaName,
-				FormFieldName:   "Net Profit",
-				TransactionType: txType,
-				NetAmount:       &netVal,
-				GstAmount:       &zeroGst,
-				GrossAmount:     &grossVal,
-				Notes:           &noteStr,
-				CreatedAt:       time.Now().Format("2006-01-02 15:04:05"),
-			})
 		}
 	}
 
-	// Apply manual slice-based pagination to exact offset and limit
-	if pageLimit > 0 {
-		start := pageOffset
-		if start > len(result) {
-			start = len(result)
-		}
-		end := start + pageLimit
-		if end > len(result) {
-			end = len(result)
-		}
-		result = result[start:end]
-	}
-
-	return result, nil
+	return applyPagination(result, pageOffset, pageLimit), nil
 }
 
-func (r *Repository) CountCoaEntryDetails(ctx context.Context, coaName string, f common.Filter, actorID uuid.UUID, role string) (int, error) {
+func (r *Repository) CountCoaEntryDetails(ctx context.Context, coaName string, f common.Filter, actorID uuid.UUID, role string, filterPracID *uuid.UUID) (int, error) {
 	var permissionClause string
+	var args []any
 
 	if strings.EqualFold(role, util.RoleAccountant) {
-		permissionClause = ` AND (
-            v.practitioner_id IN (
-                SELECT practitioner_id FROM tbl_invitation 
-                WHERE accountant_id = ? AND status = 'COMPLETED'
-            )
-            OR (v.clinic_id = '00000000-0000-0000-0000-000000000000' AND v.practitioner_id IN (
-                SELECT practitioner_id FROM tbl_invitation 
-                WHERE accountant_id = ? AND status = 'COMPLETED'
-            ))
-        )`
+		if filterPracID != nil {
+			permissionClause = ` AND (
+                v.practitioner_id = ?
+                AND v.practitioner_id IN (
+                    SELECT practitioner_id FROM tbl_invitation
+                    WHERE accountant_id = ? AND status = 'COMPLETED'
+                )
+            )`
+			args = []any{*filterPracID, actorID}
+		} else {
+			permissionClause = ` AND (
+                v.practitioner_id IN (
+                    SELECT practitioner_id FROM tbl_invitation
+                    WHERE accountant_id = ? AND status = 'COMPLETED'
+                )
+                OR (v.clinic_id = '00000000-0000-0000-0000-000000000000' AND v.practitioner_id IN (
+                    SELECT practitioner_id FROM tbl_invitation
+                    WHERE accountant_id = ? AND status = 'COMPLETED'
+                ))
+            )`
+			args = []any{actorID, actorID}
+		}
 	} else {
 		permissionClause = ` AND (
             v.clinic_id IN (
-                SELECT id FROM tbl_clinic 
+                SELECT id FROM tbl_clinic
                 WHERE practitioner_id = ? AND deleted_at IS NULL
             )
             OR (v.clinic_id = '00000000-0000-0000-0000-000000000000' AND v.practitioner_id = ?)
         )`
+		args = []any{actorID, actorID}
 	}
 
 	allowedColumns := map[string]string{
@@ -1215,54 +1163,33 @@ func (r *Repository) CountCoaEntryDetails(ctx context.Context, coaName string, f
 
 	searchCols := []string{"v.account_name", "v.description"}
 	q, qArgs := common.BuildQuery(base, f, allowedColumns, searchCols, true)
-	args := []any{coaName, actorID, actorID}
-	args = append(args, qArgs...)
+
+	finalArgs := []any{coaName}
+	finalArgs = append(finalArgs, args...)
+	finalArgs = append(finalArgs, qArgs...)
 	q = r.db.Rebind(q)
 
 	var total int
-	if err := r.db.QueryRowContext(ctx, q, args...).Scan(&total); err != nil {
+	if err := r.db.QueryRowContext(ctx, q, finalArgs...).Scan(&total); err != nil {
 		return 0, fmt.Errorf("count coa entry details via views: %w", err)
 	}
 
 	if strings.EqualFold(coaName, "Retained Earnings") {
 		var targetPracIDs []uuid.UUID
 		if strings.EqualFold(role, util.RoleAccountant) {
-			_ = r.db.SelectContext(ctx, &targetPracIDs, `SELECT practitioner_id FROM tbl_invitation WHERE accountant_id = ? AND status = 'COMPLETED'`, actorID)
+			if filterPracID != nil {
+				targetPracIDs = []uuid.UUID{*filterPracID}
+			} else {
+				_ = r.db.SelectContext(ctx, &targetPracIDs,
+					`SELECT practitioner_id FROM tbl_invitation WHERE accountant_id = ? AND status = 'COMPLETED'`,
+					actorID)
+			}
 		} else {
 			targetPracIDs = []uuid.UUID{actorID}
 		}
 
 		if len(targetPracIDs) > 0 {
-			plFilter := &pl.PLReportFilter{}
-
-			// Extract filters from Where conditions
-			for _, cond := range f.Where {
-				switch cond.Field {
-				case "start_date":
-					if dateStr, ok := cond.Value.(string); ok {
-						plFilter.DateFrom = &dateStr
-					}
-				case "end_date":
-					if dateStr, ok := cond.Value.(string); ok {
-						plFilter.DateUntil = &dateStr
-					}
-				case "clinic_id":
-					if clinicUUID, ok := cond.Value.(uuid.UUID); ok {
-						clinicStr := clinicUUID.String()
-						plFilter.ClinicID = &clinicStr
-					}
-				case "form_id":
-					if formUUID, ok := cond.Value.(uuid.UUID); ok {
-						formStr := formUUID.String()
-						plFilter.FormID = &formStr
-					}
-				case "tax_type_id":
-					if TaxTypeUUID, ok := cond.Value.(uuid.UUID); ok {
-						TaxTypeStr := TaxTypeUUID.String()
-						plFilter.TaxTypeID = &TaxTypeStr
-					}
-				}
-			}
+			plFilter := buildPLFilter(f)
 			summary, err := r.plRepo.GetPLSummary(ctx, targetPracIDs, plFilter)
 			if err == nil && summary != nil && summary.NetProfitNet != 0 {
 				total++
@@ -1457,4 +1384,80 @@ func (r *Repository) DeleteByFormVersionID(ctx context.Context, tx *sqlx.Tx, ver
 	deletedEntriesCount, _ := res.RowsAffected()
 
 	return deletedEntriesCount, nil
+}
+
+// ── helpers ──────────────────────────────────────────────────────────────────
+
+// applyPagination slices result in-memory.
+func applyPagination[T any](result []T, offset, limit int) []T {
+	if limit <= 0 {
+		return result
+	}
+	start := offset
+	if start > len(result) {
+		start = len(result)
+	}
+	end := start + limit
+	if end > len(result) {
+		end = len(result)
+	}
+	return result[start:end]
+}
+
+type retainedEarningsCOA struct {
+	ID   uuid.UUID
+	Name string
+}
+
+func (r *Repository) getOrDefaultRetainedEarningsCOA(ctx context.Context) retainedEarningsCOA {
+	var reCOA struct {
+		ID   uuid.UUID `db:"id"`
+		Name string    `db:"name"`
+	}
+	err := r.db.GetContext(ctx, &reCOA, `
+        SELECT v.id, COALESCE(v.name, tpl.name) AS name 
+        FROM tbl_chart_of_accounts v
+        LEFT JOIN tbl_chart_of_accounts_template tpl ON tpl.id = v.template_id
+        WHERE (COALESCE(v.code, tpl.code) = 960 OR LOWER(COALESCE(v.name, tpl.name)) = 'retained earnings')
+          AND v.deleted_at IS NULL LIMIT 1`)
+	if err != nil {
+		return retainedEarningsCOA{
+			ID:   uuid.MustParse("00000000-0000-0000-0000-000000000960"),
+			Name: "Retained Earnings",
+		}
+	}
+	return retainedEarningsCOA{ID: reCOA.ID, Name: reCOA.Name}
+}
+
+// buildPLFilter extracts filters from a common.Filter into a PLReportFilter
+func buildPLFilter(f common.Filter) *pl.PLReportFilter {
+	plFilter := &pl.PLReportFilter{}
+	for _, cond := range f.Where {
+		switch cond.Field {
+		case "start_date":
+			if v, ok := cond.Value.(string); ok {
+				plFilter.DateFrom = &v
+			}
+		case "end_date":
+			if v, ok := cond.Value.(string); ok {
+				plFilter.DateUntil = &v
+			}
+		case "clinic_id":
+			if v, ok := cond.Value.(uuid.UUID); ok {
+				s := v.String()
+				plFilter.ClinicID = &s
+			}
+		case "form_id":
+			if v, ok := cond.Value.(uuid.UUID); ok {
+				s := v.String()
+				plFilter.FormID = &s
+			}
+		case "tax_type_id":
+			if v, ok := cond.Value.(uuid.UUID); ok {
+				s := v.String()
+				plFilter.TaxTypeID = &s
+			}
+		}
+	}
+	return plFilter
 }
